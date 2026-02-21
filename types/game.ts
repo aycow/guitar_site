@@ -8,9 +8,16 @@ export interface Note {
 export interface Level {
   id: string;
   title: string;
+  artist?: string;
   bpm: number;
   notes: Note[];
+  difficulty?: "easy" | "medium" | "hard";
+  category?: string;
+  durationMs?: number;
+  albumCover?: string;
 }
+
+export type GameMode = "easy" | "medium" | "hard";
 
 export interface Room {
   code: string;
