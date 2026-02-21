@@ -1,5 +1,13 @@
 "use client";
 
 export function Button({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button {...props}>{children}</button>;
+  return (
+    <Button 
+      type="submit"
+  onClick={() => console.log('submitted')}
+>
+      Save Changes
+    </Button>
+  );
 }
+
