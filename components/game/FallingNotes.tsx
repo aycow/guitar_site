@@ -174,13 +174,13 @@ export default function FallingNotes({ level, onGameEnd }: FallingNotesProps) {
         const laneX = getLaneX(hzToLane(note.targetHz));
 
         // Note circle
-        ctx.fillStyle = note.clicked ? "rgba(34, 197, 94, 0.5)" : "#3b82f6";
+        ctx.fillStyle = note.clicked ? "rgba(100, 100, 100, 0.5)" : "#888888";
         ctx.beginPath();
         ctx.arc(laneX, note.y, NOTE_RADIUS, 0, Math.PI * 2);
         ctx.fill();
 
         // Glow effect
-        ctx.strokeStyle = note.clicked ? "rgba(34, 197, 94, 0.8)" : "rgba(59, 130, 246, 0.6)";
+        ctx.strokeStyle = note.clicked ? "rgba(100, 100, 100, 0.8)" : "rgba(150, 150, 150, 0.6)";
         ctx.lineWidth = 2;
         ctx.stroke();
 
@@ -213,34 +213,34 @@ export default function FallingNotes({ level, onGameEnd }: FallingNotesProps) {
         width={800}
         height={600}
         onClick={handleCanvasClick}
-        className="w-full max-w-4xl border-2 border-blue-500 rounded-lg cursor-crosshair bg-slate-900"
+        className="w-full max-w-4xl border-2 border-gray-700 rounded-lg cursor-crosshair bg-slate-950"
       />
 
       {/* Stats Display */}
       <div className="mt-6 grid grid-cols-4 gap-4 w-full max-w-4xl">
-        <div className="bg-gray-800 rounded-lg p-4 text-center">
+        <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 text-center">
           <div className="text-gray-400 text-sm">Hits</div>
-          <div className="text-3xl font-bold text-green-400">{stats.hits}</div>
+          <div className="text-3xl font-bold text-gray-200">{stats.hits}</div>
         </div>
-        <div className="bg-gray-800 rounded-lg p-4 text-center">
+        <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 text-center">
           <div className="text-gray-400 text-sm">Misses</div>
-          <div className="text-3xl font-bold text-red-400">{stats.misses}</div>
+          <div className="text-3xl font-bold text-gray-200">{stats.misses}</div>
         </div>
-        <div className="bg-gray-800 rounded-lg p-4 text-center">
+        <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 text-center">
           <div className="text-gray-400 text-sm">Accuracy</div>
-          <div className="text-3xl font-bold text-blue-400">{stats.accuracy.toFixed(1)}%</div>
+          <div className="text-3xl font-bold text-gray-200">{stats.accuracy.toFixed(1)}%</div>
         </div>
-        <div className="bg-gray-800 rounded-lg p-4 text-center">
+        <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 text-center">
           <div className="text-gray-400 text-sm">Score</div>
-          <div className="text-3xl font-bold text-yellow-400">{stats.score}</div>
+          <div className="text-3xl font-bold text-gray-200">{stats.score}</div>
         </div>
       </div>
 
       {!gameActive && (
-        <div className="mt-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg p-6 text-center">
+        <div className="mt-6 bg-gray-900 border border-gray-700 rounded-lg p-6 text-center">
           <h2 className="text-2xl font-bold text-white">Game Over!</h2>
-          <p className="text-gray-200 mt-2">Final Score: {stats.score}</p>
-          <p className="text-gray-200">Accuracy: {stats.accuracy.toFixed(1)}%</p>
+          <p className="text-gray-400 mt-2">Final Score: {stats.score}</p>
+          <p className="text-gray-400">Accuracy: {stats.accuracy.toFixed(1)}%</p>
         </div>
       )}
     </div>

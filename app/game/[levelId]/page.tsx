@@ -39,12 +39,43 @@ export default function GamePlayPage() {
   const handleGameEnd = (stats: GameStats) => {
     setGameEnded(true);
     setFinalStats(stats);
+    
+    // Submit score to API
+    submitScore(stats);
+  };
+
+  const submitScore = async (stats: GameStats) => {
+    try {
+      // Using a placeholder user ID - replace with actual user ID from auth
+      const userId = `user_${Date.now()}`;
+      
+      const response = await fetch("/api/scores", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId,
+          levelId: level.id,
+          score: stats.score,
+          hits: stats.hits,
+          misses: stats.misses,
+          accuracy: stats.accuracy,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error("Failed to submit score");
+      }
+    } catch (error) {
+      console.error("Error submitting score:", error);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-black">
+    <div className="min-h-screen bg-black">
       {/* Background Decoration */}
-      <div className="fixed inset-0 bg-gradient-to-b from-purple-500/10 to-transparent pointer-events-none" />
+      <div className="fixed inset-0 bg-gradient-to-b from-gray-900/20 to-transparent pointer-events-none" />
 
       <div className="relative z-10 p-6 md:p-8 max-w-7xl mx-auto">
         {/* Header */}
@@ -63,48 +94,48 @@ export default function GamePlayPage() {
         </div>
 
         {/* Game Canvas */}
-        <div className="bg-gray-900/50 backdrop-blur-sm border border-gray-800 rounded-xl p-6 shadow-lg">
+        <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 shadow-lg">
           <FallingNotes level={level} onGameEnd={handleGameEnd} />
         </div>
 
         {/* Level Info */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
             <div className="text-gray-400 text-sm">BPM</div>
-            <div className="text-2xl font-bold text-blue-400 mt-1">{level.bpm}</div>
+            <div className="text-2xl font-bold text-gray-200 mt-1">{level.bpm}</div>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
             <div className="text-gray-400 text-sm">Difficulty</div>
-            <div className="text-2xl font-bold text-purple-400 mt-1 capitalize">{level.difficulty}</div>
+            <div className="text-2xl font-bold text-gray-200 mt-1 capitalize">{level.difficulty}</div>
           </div>
-          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
             <div className="text-gray-400 text-sm">Notes</div>
-            <div className="text-2xl font-bold text-green-400 mt-1">{level.notes.length}</div>
+            <div className="text-2xl font-bold text-gray-200 mt-1">{level.notes.length}</div>
           </div>
         </div>
 
         {/* Game End Modal */}
         {gameEnded && finalStats && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 max-w-md w-full mx-4 text-center">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-gray-900 border border-gray-700 rounded-xl p-8 max-w-md w-full mx-4 text-center">
               <h2 className="text-3xl font-bold text-white mb-4">🎉 Level Complete!</h2>
 
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-gray-800 rounded-lg p-4">
                   <div className="text-gray-400 text-sm">Accuracy</div>
-                  <div className="text-2xl font-bold text-blue-400 mt-1">{finalStats.accuracy.toFixed(1)}%</div>
+                  <div className="text-2xl font-bold text-gray-200 mt-1">{finalStats.accuracy.toFixed(1)}%</div>
                 </div>
                 <div className="bg-gray-800 rounded-lg p-4">
                   <div className="text-gray-400 text-sm">Score</div>
-                  <div className="text-2xl font-bold text-yellow-400 mt-1">{finalStats.score}</div>
+                  <div className="text-2xl font-bold text-gray-200 mt-1">{finalStats.score}</div>
                 </div>
                 <div className="bg-gray-800 rounded-lg p-4">
                   <div className="text-gray-400 text-sm">Hits</div>
-                  <div className="text-2xl font-bold text-green-400 mt-1">{finalStats.hits}</div>
+                  <div className="text-2xl font-bold text-gray-200 mt-1">{finalStats.hits}</div>
                 </div>
                 <div className="bg-gray-800 rounded-lg p-4">
                   <div className="text-gray-400 text-sm">Misses</div>
-                  <div className="text-2xl font-bold text-red-400 mt-1">{finalStats.misses}</div>
+                  <div className="text-2xl font-bold text-gray-200 mt-1">{finalStats.misses}</div>
                 </div>
               </div>
 
@@ -115,7 +146,7 @@ export default function GamePlayPage() {
                     setFinalStats(null);
                     window.location.reload();
                   }}
-                  className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-lg transition-colors"
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition-colors"
                 >
                   Play Again
                 </button>

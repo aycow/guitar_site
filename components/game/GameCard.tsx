@@ -28,9 +28,9 @@ export default function GameCard({ level }: GameCardProps) {
   };
 
   return (
-    <div className="group relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 h-full flex flex-col">
+    <div className="group relative bg-gray-900 border border-gray-700 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 h-full flex flex-col">
       {/* Album Cover Background */}
-      <div className="relative w-full h-48 bg-gradient-to-b from-blue-500 to-purple-600 overflow-hidden">
+      <div className="relative w-full h-48 bg-gradient-to-b from-gray-700 to-gray-900 overflow-hidden">
         {level.albumCover ? (
           <Image
             src={level.albumCover}
@@ -39,7 +39,7 @@ export default function GameCard({ level }: GameCardProps) {
             className="object-cover group-hover:scale-110 transition-transform duration-300"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-blue-500 to-purple-600 group-hover:from-blue-600 group-hover:to-purple-700 transition-all">
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-b from-gray-700 to-gray-900 group-hover:from-gray-600 group-hover:to-gray-800 transition-all">
             <Music className="w-16 h-16 text-white/30" />
           </div>
         )}
@@ -58,7 +58,7 @@ export default function GameCard({ level }: GameCardProps) {
       {/* Content */}
       <div className="p-4 flex flex-col flex-1">
         {/* Title and Artist */}
-        <h3 className="text-lg font-bold text-white truncate group-hover:text-blue-300 transition-colors">
+        <h3 className="text-lg font-bold text-white truncate group-hover:text-gray-300 transition-colors">
           {level.title}
         </h3>
         {level.artist && (
@@ -76,7 +76,7 @@ export default function GameCard({ level }: GameCardProps) {
         {/* Category Badge */}
         {level.category && (
           <div className="mb-3">
-            <span className="inline-block bg-blue-500/40 text-blue-200 text-xs px-2 py-1 rounded-full">
+            <span className="inline-block bg-gray-800 text-gray-300 text-xs px-2 py-1 rounded-full border border-gray-700">
               {level.category}
             </span>
           </div>
@@ -85,7 +85,7 @@ export default function GameCard({ level }: GameCardProps) {
         {/* Play Button */}
         <button
           onClick={handlePlayClick}
-          className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-2 rounded-lg transition-all duration-200 group-hover:shadow-lg"
+          className="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition-all duration-200 group-hover:shadow-lg"
         >
           Play Now
         </button>

@@ -24,7 +24,7 @@ export default function Select({
   return (
     <div className="flex flex-col gap-2">
       {label && (
-        <label htmlFor={id} className="text-sm font-medium text-gray-700">
+        <label htmlFor={id} className="text-sm font-medium text-white">
           {label}
         </label>
       )}
@@ -32,11 +32,13 @@ export default function Select({
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${className}`}
+        className={`px-4 py-2 border border-gray-600 rounded-lg bg-gray-900 text-white focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-transparent transition-all hover:border-gray-500 ${className}`}
       >
-        <option value="">{placeholder}</option>
+        <option value="" className="bg-gray-900 text-white">
+          {placeholder}
+        </option>
         {options.map((option) => (
-          <option key={option.value} value={option.value}>
+          <option key={option.value} value={option.value} className="bg-gray-900 text-white">
             {option.label}
           </option>
         ))}
