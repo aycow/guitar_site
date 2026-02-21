@@ -112,14 +112,7 @@ export default function LevelSelectPage() {
         {filteredLevels.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredLevels.map((level) => (
-              <GameCard
-                key={level.id}
-                level={level}
-                onPlay={(levelId) => {
-                  console.log(`Playing level: ${levelId}`);
-                  // TODO: Navigate to game page with levelId
-                }}
-              />
+              <GameCard key={level.id} level={level} />
             ))}
           </div>
         ) : (

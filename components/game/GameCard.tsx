@@ -3,13 +3,15 @@
 import type { Level } from "@/types/game";
 import Image from "next/image";
 import { Star, Music } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface GameCardProps {
   level: Level;
-  onPlay?: (levelId: string) => void;
 }
 
-export default function GameCard({ level, onPlay }: GameCardProps) {
+export default function GameCard({ level }: GameCardProps) {
+  const router = useRouter();
+
   const difficultyMap = {
     easy: 1,
     medium: 2,
@@ -21,11 +23,12 @@ export default function GameCard({ level, onPlay }: GameCardProps) {
   const durationSeconds = level.durationMs ? Math.floor((level.durationMs % 60000) / 1000) : 0;
   const durationString = `${durationMinutes}:${durationSeconds.toString().padStart(2, "0")}`;
 
+  const handlePlayClick = () => {
+    router.push(`/game/${level.id}`);
+  };
+
   return (
-    <div
-      className="group relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 cursor-pointer h-full"
-      onClick={() => onPlay?.(level.id)}
-    >
+    <div className="group relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 h-full flex flex-col">
       {/* Album Cover Background */}
       <div className="relative w-full h-48 bg-gradient-to-b from-blue-500 to-purple-600 overflow-hidden">
         {level.albumCover ? (
@@ -81,6 +84,7 @@ export default function GameCard({ level, onPlay }: GameCardProps) {
 
         {/* Play Button */}
         <button
+          onClick={handlePlayClick}
           className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-2 rounded-lg transition-all duration-200 group-hover:shadow-lg"
         >
           Play Now
