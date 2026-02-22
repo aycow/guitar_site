@@ -112,7 +112,7 @@ export default function LeaderboardPage() {
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
           <Link href="/">
             <h1 className="text-2xl font-bold text-white hover:text-zinc-300 cursor-pointer font-mono">
-              🎸 GuitarGame
+              🎸 Guitarverse
             </h1>
           </Link>
           <div className="flex gap-4">

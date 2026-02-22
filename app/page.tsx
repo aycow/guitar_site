@@ -182,7 +182,7 @@ export default function Home() {
       {/* ── Navigation Bar ── */}
       <nav className="border-b border-[#1f2937] bg-[#0d1117]/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white font-mono">🎸 GuitarGame</h1>
+          <h1 className="text-2xl font-bold text-white font-mono">🎸 Guitarverse</h1>
           <div className="flex items-center gap-2 sm:gap-4">
             <Link href="/leaderboard">
               <Button variant="ghost" size="sm">Leaderboard</Button>
@@ -383,7 +383,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-zinc-700 bg-zinc-950/50 py-8">
         <div className="mx-auto max-w-7xl px-6 text-center text-zinc-400">
-          <p>&copy; 2026 GuitarGame. Master your pitch, compete with the world.</p>
+          <p>&copy; 2026 Guitarverse. Master your pitch, compete with the world.</p>
         </div>
       </footer>
     </main>
