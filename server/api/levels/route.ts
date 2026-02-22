@@ -2,33 +2,16 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/server/db/client";
 import Level from "@/server/db/models/Level";
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    await connectDB();
-
-    const { searchParams } = new URL(req.url);
-
-    // Optional filters via query params
-    // e.g. /api/levels?difficulty=easy&limit=10
-    const difficulty = searchParams.get("difficulty");
-    const limit = parseInt(searchParams.get("limit") ?? "50", 10);
-
-    const query: Record<string, unknown> = {};
-    if (difficulty && ["easy", "medium", "hard"].includes(difficulty)) {
-      query.difficulty = difficulty;
-    }
-
-    const levels = await Level.find(query)
-      .select("-notes")        // Don't send the full note array in the list view
-      .sort({ difficulty: 1, title: 1 })
-      .limit(limit)
-      .lean();                 // Returns plain JS objects instead of Mongoose docs (faster)
-
-    return NextResponse.json({ ok: true, data: levels });
-  } catch (err) {
-    console.error("[GET /api/levels]", err);
+    const client = await clientPromise;
+    const db = client.db("guitar_academy");
+    const levels = await db.collection("levels").find({}).toArray();
+    return NextResponse.json(levels);
+  } catch (error) {
+    console.error("Error fetching levels:", error);
     return NextResponse.json(
-      { ok: false, message: "Failed to fetch levels" },
+      { message: "Failed to fetch levels" },
       { status: 500 }
     );
   }

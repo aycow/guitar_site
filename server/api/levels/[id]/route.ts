@@ -1,39 +1,27 @@
 import { NextResponse } from "next/server";
-import mongoose from "mongoose";
-import { connectDB } from "@/server/db/client";
-import Level from "@/server/db/models/Level";
+import clientPromise from "@/server/db/client";
 
-type Params = { params: { id: string } };
-
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(
+  _req: Request,
+  { params }: { params: { id: string } }
+) {
   try {
-    await connectDB();
-
-    const { id } = params;
-
-    // Validate that the id is a valid MongoDB ObjectId before querying
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json(
-        { ok: false, message: "Invalid level ID" },
-        { status: 400 }
-      );
-    }
-
-    // Full level including the notes array (needed for actual gameplay)
-    const level = await Level.findById(id).lean();
-
+    const client = await clientPromise;
+    const db = client.db("guitar_academy");
+    const level = await db.collection("levels").findOne({ id: params.id });
+    
     if (!level) {
       return NextResponse.json(
-        { ok: false, message: "Level not found" },
+        { message: "Level not found" },
         { status: 404 }
       );
     }
-
-    return NextResponse.json({ ok: true, data: level });
-  } catch (err) {
-    console.error("[GET /api/levels/:id]", err);
+    
+    return NextResponse.json(level);
+  } catch (error) {
+    console.error("Error fetching level:", error);
     return NextResponse.json(
-      { ok: false, message: "Failed to fetch level" },
+      { message: "Failed to fetch level" },
       { status: 500 }
     );
   }
