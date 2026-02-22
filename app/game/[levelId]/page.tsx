@@ -310,13 +310,11 @@ function MeasurePreview({
   songTimeMs,
   windowMeasures = 2,
   beatsPerMeasure = 4,
-  hitTimestamps = new Set(),
 }: {
   chart: Chart;
   songTimeMs: number;
   windowMeasures?: number;
   beatsPerMeasure?: number;
-  hitTimestamps?: Set<number>;
 }) {
   const bpm = chart.bpmHint ?? null;
 
@@ -439,13 +437,10 @@ function MeasurePreview({
         {/* Notes (events) */}
         {visibleEvents.map((ev, i) => {
           const pct = ((ev.timeMs - startMs) / windowMs) * 100;
-          const isLabeled = i < 10;
+          const isLabeled = i < 10; // label only first few to avoid clutter
           const noteName = midiToName(ev.notes[0]);
           const sustainPct =
             ev.durationMs > 0 ? Math.min(100 - pct, (ev.durationMs / windowMs) * 100) : 0;
-          const isHit = hitTimestamps.has(ev.timeMs);
-          const noteColor = isHit ? "#22c55e" : "#60a5fa";
-          const noteGlow  = isHit ? "#22c55e" : "#60a5fa";
 
           return (
             <div key={`${ev.timeMs}-${i}`} style={{ position: "absolute", left: `${pct}%`, top: 0, bottom: 0 }}>
@@ -458,14 +453,14 @@ function MeasurePreview({
                     top: 42,
                     height: 6,
                     width: `${sustainPct}%`,
-                    background: isHit ? "#22c55e33" : "#60a5fa33",
-                    border: `1px solid ${isHit ? "#22c55e55" : "#60a5fa55"}`,
+                    background: "#60a5fa33",
+                    border: "1px solid #60a5fa55",
                     borderRadius: 999,
                   }}
                 />
               )}
 
-              {/* note stem */}
+              {/* note marker */}
               <div
                 title={`${noteName} @ ${Math.round(ev.timeMs)}ms`}
                 style={{
@@ -474,16 +469,11 @@ function MeasurePreview({
                   top: 14,
                   width: 2,
                   height: 46,
-                  background: noteColor,
-                  boxShadow: isHit
-                    ? `0 0 10px ${noteGlow}, 0 0 24px ${noteGlow}99`
-                    : `0 0 10px ${noteGlow}66`,
+                  background: "#60a5fa",
+                  boxShadow: "0 0 10px #60a5fa66",
                   borderRadius: 2,
-                  transition: "background 0.3s, box-shadow 0.3s",
                 }}
               />
-
-              {/* note head dot */}
               <div
                 style={{
                   position: "absolute",
@@ -492,12 +482,8 @@ function MeasurePreview({
                   width: 10,
                   height: 10,
                   borderRadius: "50%",
-                  background: noteColor,
-                  boxShadow: isHit
-                    ? `0 0 14px ${noteGlow}, 0 0 30px ${noteGlow}80, 0 0 60px ${noteGlow}40`
-                    : `0 0 12px ${noteGlow}66`,
-                  transition: "background 0.3s, box-shadow 0.3s",
-                  animation: isHit ? "measureNoteHit 0.5s ease-out" : undefined,
+                  background: "#60a5fa",
+                  boxShadow: "0 0 12px #60a5fa66",
                 }}
               />
 
@@ -509,11 +495,9 @@ function MeasurePreview({
                     top: 0,
                     left: 8,
                     fontSize: 10,
-                    color: isHit ? "#4ade80" : "#9ca3af",
+                    color: "#9ca3af",
                     whiteSpace: "nowrap",
                     userSelect: "none",
-                    transition: "color 0.3s",
-                    fontWeight: isHit ? 700 : 400,
                   }}
                 >
                   {noteName}
@@ -582,8 +566,7 @@ export function StaffPreview({
   measuresToShow = 2,
   beatsPerMeasure = 4,
   beatValue = 4,
-  subdivisionPerBeat = 4,
-  hitTimestamps = new Set(),
+  subdivisionPerBeat = 4, // 4 => 16th notes in 4/4
 }: {
   chart: Chart;
   songTimeMs: number;
@@ -591,7 +574,6 @@ export function StaffPreview({
   beatsPerMeasure?: number;
   beatValue?: number;
   subdivisionPerBeat?: number;
-  hitTimestamps?: Set<number>;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -693,19 +675,9 @@ export function StaffPreview({
           slots[clamped].push(ev.notes[0]);
         }
 
-        // Which event timestamps fall in each slot for this measure?
-        const slotEventMs: (number | null)[] = Array(slotsPerMeasure).fill(null);
-        for (const ev of chart.events) {
-          if (ev.timeMs < startMs || ev.timeMs >= endMs) continue;
-          const rel = ev.timeMs - startMs;
-          const slot = Math.max(0, Math.min(slotsPerMeasure - 1,
-            Math.floor((rel + slotMs * 0.25) / slotMs)));
-          slotEventMs[slot] = ev.timeMs;
-        }
-
-        const notes: VFTickable[] = slots.map((midiList, slotIdx) => {
+        const notes: VFTickable[] = slots.map((midiList) => {
           if (midiList.length === 0) {
-            return new GhostNote({ duration: "16" });
+            return new GhostNote({ duration: "16" }); // spacing, no visible rest
           }
 
           const keys = midiList
@@ -720,16 +692,10 @@ export function StaffPreview({
             if (acc) n.addModifier(new Accidental(acc), i);
           });
 
-          // Color the note green if it was hit
-          const evMs = slotEventMs[slotIdx];
-          if (evMs !== null && hitTimestamps.has(evMs)) {
-            n.setStyle({ fillStyle: "#22c55e", strokeStyle: "#22c55e" });
-          }
-
           return n;
         });
 
-        return { notes };
+        return { notes }; // ✅ MUST be inside the function
       };
 
       // Draw each measure as its own stave (barlines + ledger lines happen automatically)
@@ -780,7 +746,6 @@ export function StaffPreview({
     beatValue,
     subdivisionPerBeat,
     startMeasureIndex,
-    hitTimestamps,
   ]);
 
   return (
@@ -829,7 +794,6 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   const [pitchHistoryCount, setPitchHistoryCount] = useState(0);
   const [gameOver,     setGameOver    ] = useState(false);
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
-  const [lastHitId,    setLastHitId   ] = useState<number>(0); // increments on each hit to trigger glow
   // ── NEW: volume state ──
   const [volume,       setVolume      ] = useState(1);
   const [isMuted,      setIsMuted     ] = useState(false);
@@ -855,8 +819,6 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   const maxComboRef = useRef(0);
   const scoredRef   = useRef<ScoredNote[]>([]);
   const nextIdxRef  = useRef(0);
-  const hitTimestampsRef = useRef<Set<number>>(new Set());
-  const [hitTimestamps, setHitTimestamps] = useState<Set<number>>(new Set());
 
   const inputLatencyMsRef = useRef(inputLatencyMs);
   useEffect(() => { inputLatencyMsRef.current = inputLatencyMs; }, [inputLatencyMs]);
@@ -1041,9 +1003,6 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
                 setScore(scoreRef.current);
                 setCombo(comboRef.current);
                 setMaxCombo(maxComboRef.current);
-                setLastHitId((id) => id + 1);
-                hitTimestampsRef.current = new Set(hitTimestampsRef.current).add(ev.timeMs);
-                setHitTimestamps(new Set(hitTimestampsRef.current));
                 showFeedback("HIT");
                 nextIdxRef.current++;
                 continue;
@@ -1218,8 +1177,6 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     scoredRef.current      = [];
     pitchHistoryRef.current = [];
     setScore(0); setCombo(0); setMaxCombo(0); setScoredNotes([]); setSongTimeMs(0);
-    hitTimestampsRef.current = new Set();
-    setHitTimestamps(new Set());
     setGameOver(false);
     setScoreSubmitted(false);
     setIsPlaying(true);
@@ -1270,23 +1227,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
         }}>{feedback}</div>
       )}
 
-      <style>{`
-        @keyframes pop{0%{opacity:1;transform:translateX(-50%) scale(1.2)}100%{opacity:0;transform:translateX(-50%) scale(0.9)}}
-        @keyframes noteHitGlow{
-          0%{box-shadow:0 0 0px #22c55e,0 0 0px #22c55e00;background:#22c55e;transform:scale(1.25)}
-          30%{box-shadow:0 0 18px #22c55e,0 0 40px #22c55e80,0 0 70px #22c55e40;background:#4ade80;transform:scale(1.18)}
-          100%{box-shadow:0 0 0px #22c55e00;background:#14532d;transform:scale(1)}
-        }
-        @keyframes noteHitRing{
-          0%{opacity:1;transform:scale(0.8);border-color:#22c55e}
-          100%{opacity:0;transform:scale(2.4);border-color:#22c55e00}
-        }
-        @keyframes measureNoteHit{
-          0%{transform:scale(2.2);box-shadow:0 0 30px #22c55e,0 0 60px #22c55e80}
-          60%{transform:scale(1.3)}
-          100%{transform:scale(1)}
-        }
-      `}</style>
+      <style>{`@keyframes pop{0%{opacity:1;transform:translateX(-50%) scale(1.2)}100%{opacity:0;transform:translateX(-50%) scale(0.9)}}`}</style>
 
       {/* Header */}
       <div style={{ display:"flex", alignItems:"baseline", gap:16, marginBottom:24 }}>
@@ -1366,10 +1307,8 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
       {/* Controls */}
       <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap", alignItems:"center" }}>
         <div style={{ background:"#111827", border:"1px solid #1f2937", borderRadius:8, padding:"8px 12px", display:"flex", alignItems:"center", gap:10 }}>
-          <label htmlFor="select-audio" style={{ fontSize:12, color:"#9ca3af", display:"inline-block" }}>Input</label>
+          <span style={{ fontSize:12, color:"#9ca3af" }}>Input</span>
           <select
-            id="select-audio"
-            aria-label="Audio input device"
             value={selectedDeviceId}
             onChange={(e) => setSelectedDeviceId(e.target.value)}
             style={{ background:"#0a0a0f", color:"#f0f0f0", border:"1px solid #374151", borderRadius:6, padding:"6px 8px", fontSize:12, maxWidth:280 }}
@@ -1432,10 +1371,8 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
 
       {/* Latency calibration */}
       <div style={{ background:"#111827", border:"1px solid #1f2937", borderRadius:8, padding:"12px 16px", marginBottom:24, display:"flex", alignItems:"center", gap:16 }}>
-        <label htmlFor="input-latency" style={{ fontSize:10, color:"#6b7280", letterSpacing:2, whiteSpace:"nowrap" }}>INPUT LATENCY</label>
+        <div style={{ fontSize:10, color:"#6b7280", letterSpacing:2, whiteSpace:"nowrap" }}>INPUT LATENCY</div>
         <input
-          id="input-latency"
-          aria-label="Input latency"
           type="range" min={-200} max={200} step={5}
           value={inputLatencyMs}
           onChange={(e) => setInputLatencyMs(Number(e.target.value))}
@@ -1476,43 +1413,24 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
           )}
         </div>
       </div>
-      <MeasurePreview chart={chart} songTimeMs={songTimeMs} hitTimestamps={hitTimestamps} />
-      <StaffPreview chart={chart} songTimeMs={songTimeMs} hitTimestamps={hitTimestamps} />
+      <StaffPreview chart={chart} songTimeMs={songTimeMs} />
       {/* Recent notes */}
       
       {scoredNotes.length > 0 && (
         <div style={{ marginBottom:24 }}>
           <div style={{ fontSize:10, color:"#6b7280", letterSpacing:2, marginBottom:8 }}>RECENT NOTES</div>
           <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-            {[...scoredNotes].reverse().slice(0, 12).map((n, i) => {
-              const isNewestHit = i === 0 && n.result === "HIT";
-              return (
-                <div key={`${lastHitId}-${i}`} style={{ position: "relative" }}>
-                  {/* expanding ring on newest hit */}
-                  {isNewestHit && (
-                    <div style={{
-                      position: "absolute",
-                      inset: -3,
-                      borderRadius: 8,
-                      border: "2px solid #22c55e",
-                      pointerEvents: "none",
-                      animation: "noteHitRing 0.6s ease-out forwards",
-                    }} />
-                  )}
-                  <div style={{
-                    background: n.result === "HIT" ? "#14532d" : "#7f1d1d",
-                    border:`1px solid ${n.result === "HIT" ? "#166534" : "#991b1b"}`,
-                    borderRadius:6, padding:"4px 10px", fontSize:12,
-                    color: n.result === "HIT" ? "#22c55e" : "#ef4444",
-                    animation: isNewestHit ? "noteHitGlow 0.7s ease-out forwards" : undefined,
-                    position: "relative",
-                  }}>
-                    {midiToName(n.event.notes[0])}
-                    {n.detectedHz && <span style={{ color:"#6b7280", marginLeft:4 }}>{n.detectedHz.toFixed(0)}Hz</span>}
-                  </div>
-                </div>
-              );
-            })}
+            {[...scoredNotes].reverse().slice(0, 12).map((n, i) => (
+              <div key={i} style={{
+                background: n.result === "HIT" ? "#14532d" : "#7f1d1d",
+                border:`1px solid ${n.result === "HIT" ? "#166534" : "#991b1b"}`,
+                borderRadius:6, padding:"4px 10px", fontSize:12,
+                color: n.result === "HIT" ? "#22c55e" : "#ef4444",
+              }}>
+                {midiToName(n.event.notes[0])}
+                {n.detectedHz && <span style={{ color:"#6b7280", marginLeft:4 }}>{n.detectedHz.toFixed(0)}Hz</span>}
+              </div>
+            ))}
           </div>
         </div>
       )}
