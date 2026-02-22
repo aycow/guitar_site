@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import clientPromise from "@/lib/mongodb";
+import { getAuthSession } from "@/lib/auth";
 import type { SubmitScoreRequest, GetLeaderboardRequest } from "@/types/api";
 
 export async function GET(req: Request) {
@@ -75,21 +76,40 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    // Verify authentication
+    const session = await getAuthSession();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { message: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const body: SubmitScoreRequest = await req.json();
-    
+
     // Validate required fields
-    if (!body.userId || !body.levelId || body.score === undefined) {
+    if (!body.levelId || body.score === undefined) {
       return NextResponse.json(
         { message: "Missing required fields" },
         { status: 400 }
       );
     }
 
+    // Security: Verify the userId matches the authenticated user
+    // Allow body.userId to be optional (use session.user.id if not provided)
+    const userId = body.userId || session.user.id;
+    if (body.userId && body.userId !== session.user.id) {
+      return NextResponse.json(
+        { message: "Cannot submit scores for other users" },
+        { status: 403 }
+      );
+    }
+
     const client = await clientPromise;
     const db = client.db("guitar_academy");
-    
+
     const scoreDoc = {
-      userId: body.userId,
+      userId: userId,
       levelId: body.levelId,
       roomCode: body.roomCode,
       score: body.score,
@@ -99,12 +119,12 @@ export async function POST(req: Request) {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    
+
     const result = await db.collection("scores").insertOne(scoreDoc);
-    
+
     // Update user stats
     await db.collection("users").updateOne(
-      { id: body.userId },
+      { id: userId },
       {
         $inc: { totalScore: body.score, totalLevels: 1 },
         $max: { bestAccuracy: body.accuracy },
@@ -112,7 +132,7 @@ export async function POST(req: Request) {
       },
       { upsert: true }
     );
-    
+
     return NextResponse.json({ ok: true, message: "Score saved successfully" });
   } catch (error) {
     console.error("Error saving score:", error);
