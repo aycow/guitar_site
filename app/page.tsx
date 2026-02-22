@@ -202,8 +202,9 @@ export default function Home() {
         {/* Filters */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12">
           <div>
-            <label className="block text-sm font-semibold text-zinc-300 mb-3">Difficulty</label>
+            <label htmlFor="select-difficulty" className="block text-sm font-semibold text-zinc-300 mb-3">Difficulty</label>
             <select
+              id="select-difficulty"
               value={selectedDifficulty}
               onChange={(e) => setSelectedDifficulty(e.target.value)}
               className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
@@ -216,8 +217,9 @@ export default function Home() {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-zinc-300 mb-3">Genre</label>
+            <label htmlFor="select-genre" className="block text-sm font-semibold text-zinc-300 mb-3">Genre</label>
             <select
+              id="select-genre"
               value={selectedGenre}
               onChange={(e) => setSelectedGenre(e.target.value)}
               className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
@@ -232,8 +234,9 @@ export default function Home() {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-zinc-300 mb-3">Duration</label>
+            <label htmlFor="select-duration" className="block text-sm font-semibold text-zinc-300 mb-3">Duration</label>
             <select
+              id="select-duration"
               value={selectedDuration}
               onChange={(e) => setSelectedDuration(e.target.value)}
               className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
@@ -334,20 +337,12 @@ export default function Home() {
       <section className="mx-auto max-w-7xl px-6 pb-20">
         <div className="bg-zinc-900/50 border border-zinc-700 rounded-xl p-8">
           <h3 className="text-2xl font-bold text-white mb-6">Quick Access</h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Link href="/game/g_scale">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Link href="/campaign">
               <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/30 hover:border-emerald-500/60 rounded-lg p-6 text-center transition-all cursor-pointer hover:shadow-lg hover:shadow-emerald-500/20">
                 <div className="text-4xl mb-3">🎮</div>
                 <p className="text-white font-semibold">Campaign</p>
-                <p className="text-zinc-400 text-sm mt-2">Play single-player levels</p>
-              </div>
-            </Link>
-
-            <Link href="/login">
-              <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border border-blue-500/30 hover:border-blue-500/60 rounded-lg p-6 text-center transition-all cursor-pointer hover:shadow-lg hover:shadow-blue-500/20">
-                <div className="text-4xl mb-3">👤</div>
-                <p className="text-white font-semibold">Login</p>
-                <p className="text-zinc-400 text-sm mt-2">Sign in to your account</p>
+                <p className="text-zinc-400 text-sm mt-2">Play through the song campaign</p>
               </div>
             </Link>
 
@@ -359,11 +354,13 @@ export default function Home() {
               </div>
             </Link>
 
-            <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border border-purple-500/30 rounded-lg p-6 text-center">
-              <div className="text-4xl mb-3">📊</div>
-              <p className="text-white font-semibold">Statistics</p>
-              <p className="text-zinc-400 text-sm mt-2">Coming soon</p>
-            </div>
+            <Link href="/topsongs">
+              <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border border-purple-500/30 hover:border-purple-500/60 rounded-lg p-6 text-center transition-all cursor-pointer hover:shadow-lg hover:shadow-purple-500/20">
+                <div className="text-4xl mb-3">📊</div>
+                <p className="text-white font-semibold">Top Songs</p>
+                <p className="text-zinc-400 text-sm mt-2">Most frequently played</p>
+              </div>
+            </Link>
           </div>
         </div>
       </section>
