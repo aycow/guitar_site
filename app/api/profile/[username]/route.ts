@@ -1,0 +1,75 @@
+// app/api/profile/[username]/route.ts
+
+import { NextResponse } from "next/server";
+import clientPromise from "@/server/db/client";
+
+export async function GET(
+  _req: Request,
+  { params }: { params: { username: string } }
+) {
+  const { username } = params;
+  console.log("[PROFILE/username] GET called for:", username);
+
+  try {
+    const client = await clientPromise;
+    const db = client.db("guitar_academy");
+
+    const user = await db.collection("users").findOne(
+      { username },
+      { projection: { password: 0, email: 0 } } // never expose password or email publicly
+    );
+
+    if (!user) {
+      console.warn("[PROFILE/username] ❌ User not found:", username);
+      return NextResponse.json({ message: "User not found" }, { status: 404 });
+    }
+
+    if (user.isPublic === false) {
+      console.warn("[PROFILE/username] 🔒 Profile is private:", username);
+      return NextResponse.json({ message: "This profile is private" }, { status: 403 });
+    }
+
+    const scores = await db
+      .collection("scores")
+      .find({ userId: user._id.toString() })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .toArray();
+
+    console.log("[PROFILE/username] ✅ Public profile loaded:", username, "| scores:", scores.length);
+
+    return NextResponse.json({
+      user: {
+        id: user._id.toString(),
+        username: user.username,
+        bio: user.bio ?? "",
+        avatarColor: user.avatarColor ?? "#22c55e",
+        avatarUrl: user.avatarUrl ?? null,
+        favoriteGenre: user.favoriteGenre ?? "",
+        guitarType: user.guitarType ?? "",
+        country: user.country ?? "",
+        totalScore: user.totalScore ?? 0,
+        totalLevels: user.totalLevels ?? 0,
+        bestAccuracy: user.bestAccuracy ?? 0,
+        totalHits: user.totalHits ?? 0,
+        totalMisses: user.totalMisses ?? 0,
+        currentStreak: user.currentStreak ?? 0,
+        longestStreak: user.longestStreak ?? 0,
+        lastPlayedAt: user.lastPlayedAt ?? null,
+        createdAt: user.createdAt,
+      },
+      scores: scores.map((s) => ({
+        id: s._id.toString(),
+        levelId: s.levelId,
+        score: s.score,
+        accuracy: s.accuracy,
+        hits: s.hits,
+        misses: s.misses,
+        createdAt: s.createdAt,
+      })),
+    });
+  } catch (error) {
+    console.error("[PROFILE/username] ❌ Error:", error);
+    return NextResponse.json({ message: "Failed to fetch profile" }, { status: 500 });
+  }
+}

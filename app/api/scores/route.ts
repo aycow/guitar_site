@@ -19,9 +19,6 @@ export async function GET(req: Request) {
     const query: Record<string, unknown> = {};
     if (levelId) query.levelId = levelId;
 
-    console.log("[SCORES] Querying scores with filter:", query);
-
-    // Get best score per user
     const scores = await db
       .collection("scores")
       .aggregate([
@@ -44,40 +41,30 @@ export async function GET(req: Request) {
 
     console.log("[SCORES] Found", scores.length, "score entries");
 
-    // userId is stored as a string (the _id.toString() from auth)
-    // so we need to convert back to ObjectId to look up users
-    const userIds = scores.map((s) => {
-      try {
-        return new ObjectId(s._id as string);
-      } catch {
-        return null;
-      }
-    }).filter(Boolean) as ObjectId[];
-
-    console.log("[SCORES] Looking up", userIds.length, "users");
+    const userIds = scores
+      .map((s) => { try { return new ObjectId(s._id as string); } catch { return null; } })
+      .filter(Boolean) as ObjectId[];
 
     const users = await db
       .collection("users")
       .find({ _id: { $in: userIds } })
+      .project({ username: 1, avatarColor: 1 })
       .toArray();
 
     console.log("[SCORES] Found", users.length, "matching users");
 
-    // Map _id (as string) → username
-    const userMap = new Map(users.map((u) => [u._id.toString(), u.username as string]));
+    const userMap = new Map(users.map((u) => [u._id.toString(), { username: u.username as string, avatarColor: u.avatarColor as string }]));
 
     const entries = scores.map((score, index) => {
       const userId = score._id as string;
-      const playerName = userMap.get(userId) || "Unknown Player";
-
-      if (playerName === "Unknown Player") {
-        console.warn("[SCORES] ⚠️ Could not find username for userId:", userId);
-      }
+      const userInfo = userMap.get(userId);
+      if (!userInfo) console.warn("[SCORES] ⚠️ No user found for userId:", userId);
 
       return {
         rank: index + 1,
         userId,
-        playerName,
+        playerName: userInfo?.username ?? "Unknown Player",
+        avatarColor: userInfo?.avatarColor ?? "#374151",
         score: score.bestScore as number,
         accuracy: score.bestAccuracy as number,
         hits: score.hits as number,
@@ -87,11 +74,10 @@ export async function GET(req: Request) {
       };
     });
 
-    console.log("[SCORES] ✅ Returning", entries.length, "leaderboard entries");
-
+    console.log("[SCORES] ✅ Returning", entries.length, "entries");
     return NextResponse.json({ entries, totalPlayers: entries.length });
   } catch (error) {
-    console.error("[SCORES] ❌ Error fetching leaderboard:", error);
+    console.error("[SCORES] ❌ Error:", error);
     return NextResponse.json({ message: "Failed to fetch leaderboard" }, { status: 500 });
   }
 }
@@ -104,43 +90,77 @@ export async function POST(req: Request) {
     console.log("[SCORES] Incoming score:", body);
 
     if (!body.userId || !body.levelId || body.score === undefined) {
-      console.warn("[SCORES] ❌ Missing required fields");
       return NextResponse.json({ message: "Missing required fields" }, { status: 400 });
     }
 
     const client = await clientPromise;
     const db = client.db("guitar_academy");
 
-    const scoreDoc = {
+    // Save the score
+    const result = await db.collection("scores").insertOne({
       userId: body.userId,
       levelId: body.levelId,
       roomCode: body.roomCode,
       score: body.score,
-      hits: body.hits,
-      misses: body.misses,
-      accuracy: body.accuracy,
+      hits: body.hits ?? 0,
+      misses: body.misses ?? 0,
+      accuracy: body.accuracy ?? 0,
       createdAt: new Date(),
       updatedAt: new Date(),
-    };
+    });
 
-    const result = await db.collection("scores").insertOne(scoreDoc);
-    console.log("[SCORES] ✅ Score saved, id:", result.insertedId.toString());
+    console.log("[SCORES] ✅ Score saved:", result.insertedId.toString());
+
+    // Calculate streak
+    const userId = new ObjectId(body.userId);
+    const user = await db.collection("users").findOne({ _id: userId });
+
+    let currentStreak = user?.currentStreak ?? 0;
+    let longestStreak = user?.longestStreak ?? 0;
+    const lastPlayed: Date | null = user?.lastPlayedAt ?? null;
+    const now = new Date();
+
+    if (lastPlayed) {
+      const daysSinceLast = Math.floor((now.getTime() - lastPlayed.getTime()) / 86400000);
+      if (daysSinceLast === 0) {
+        // Same day — streak unchanged
+      } else if (daysSinceLast === 1) {
+        // Consecutive day — increment streak
+        currentStreak += 1;
+      } else {
+        // Streak broken
+        currentStreak = 1;
+      }
+    } else {
+      currentStreak = 1;
+    }
+
+    longestStreak = Math.max(longestStreak, currentStreak);
 
     // Update user aggregate stats
     await db.collection("users").updateOne(
-      { _id: new ObjectId(body.userId) },
+      { _id: userId },
       {
-        $inc: { totalScore: body.score, totalLevels: 1 },
-        $max: { bestAccuracy: body.accuracy },
-        $set: { updatedAt: new Date() },
+        $inc: {
+          totalScore: body.score,
+          totalLevels: 1,
+          totalHits: body.hits ?? 0,
+          totalMisses: body.misses ?? 0,
+        },
+        $max: { bestAccuracy: body.accuracy ?? 0 },
+        $set: {
+          currentStreak,
+          longestStreak,
+          lastPlayedAt: now,
+          updatedAt: now,
+        },
       }
     );
 
-    console.log("[SCORES] ✅ User stats updated for userId:", body.userId);
-
+    console.log("[SCORES] ✅ User stats updated — streak:", currentStreak, "| longest:", longestStreak);
     return NextResponse.json({ ok: true, message: "Score saved successfully" });
   } catch (error) {
-    console.error("[SCORES] ❌ Error saving score:", error);
+    console.error("[SCORES] ❌ Error:", error);
     return NextResponse.json({ message: "Failed to save score" }, { status: 500 });
   }
 }
