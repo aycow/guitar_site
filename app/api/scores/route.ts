@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import clientPromise from "@/server/db/client";
+import clientPromise from "@/lib/mongodb";
 import type { SubmitScoreRequest, GetLeaderboardRequest } from "@/types/api";
 
 export async function GET(req: Request) {
