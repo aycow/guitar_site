@@ -37,7 +37,7 @@ type ScoredNote = {
 
 const HIT_WINDOW_MS        = 150;
 const SUSTAIN_EXTEND_MS    = 0;
-const PITCH_TOLERANCE_CENTS = 100;
+const PITCH_TOLERANCE_CENTS = 50;
 const MIN_RMS              = 0.012;
 const PITCH_HISTORY_SIZE   = 7;
 const PITCH_POLL_MS        = 33;

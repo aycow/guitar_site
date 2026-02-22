@@ -172,4 +172,18 @@ export const mockLevels: Level[] = [
     { id: "1", targetHz: 110, startMs: 0, durationMs: 500 },
   ],
 },
+{
+  id: "baby_how_much", // ✅ must match public/charts/baby_how_much.json
+  title: "How Much I Love You, Baby",
+  artist: "Unknown", // change if you want
+  bpm: 90,           // set to whatever; optional accuracy
+  difficulty: "medium",
+  category: "songs",
+  durationMs: 180000, // ~3 min (approx fine)
+  albumCover: "https://images.unsplash.com/photo-1511379938547-c1f69b13d835?w=300&h=300&fit=crop",
+  notes: [
+    // placeholder (your /game/[levelId] ignores this and uses the chart JSON)
+    { id: "1", targetHz: 110, startMs: 0, durationMs: 500 },
+  ],
+},
 ];
