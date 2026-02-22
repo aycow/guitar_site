@@ -35,15 +35,15 @@ function NavAuth() {
   if (status === "authenticated" && session?.user) {
     return (
       <div className="flex items-center gap-3">
-        {/* Avatar + username — clicking goes to profile */}
-        <Link href="/profile" className="flex items-center gap-2 group">
-          <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-black font-bold text-sm select-none group-hover:bg-emerald-400 transition-colors">
-            {(session.user.name ?? session.user.email ?? "?")[0].toUpperCase()}
-          </div>
-          <span className="text-emerald-400 group-hover:text-emerald-300 font-semibold text-sm hidden sm:block font-mono transition-colors">
-            {session.user.name ?? session.user.email}
-          </span>
-        </Link>
+        {/* Avatar circle */}
+        <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-black font-bold text-sm select-none">
+          {(session.user.name ?? session.user.email ?? "?")[0].toUpperCase()}
+        </div>
+
+        {/* Username */}
+        <span className="text-emerald-400 font-semibold text-sm hidden sm:block font-mono">
+          {session.user.name ?? session.user.email}
+        </span>
 
         {/* Log out */}
         <button

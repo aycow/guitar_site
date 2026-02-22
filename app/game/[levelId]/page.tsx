@@ -3,6 +3,7 @@
 
 import React, { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -785,6 +786,7 @@ export function StaffPreview({
 
 export default function GamePage({ params }: { params: Promise<{ levelId: string }> }) {
   const { levelId } = use(params);
+  const { data: session } = useSession();
 
   const [chart,        setChart       ] = useState<Chart | null>(null);
   const [isPlaying,    setIsPlaying   ] = useState(false);
@@ -802,6 +804,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   const [pitchHistoryCount, setPitchHistoryCount] = useState(0);
   // NEW: game over state
   const [gameOver,     setGameOver    ] = useState(false);
+  const [scoreSubmitted, setScoreSubmitted] = useState(false);
 
   const audioRef         = useRef<HTMLAudioElement | null>(null);
   const rafRef           = useRef<number | null>(null);
@@ -1050,6 +1053,42 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     return () => audio.removeEventListener("ended", handleEnded);
   }, [chart]);
 
+  // ── Submit score when game ends ──
+  useEffect(() => {
+    if (gameOver && !scoreSubmitted && session?.user?.id && chart) {
+      const hits = scoredNotes.filter((n) => n.result === "HIT").length;
+      const misses = scoredNotes.filter((n) => n.result === "MISS").length;
+      const accuracy = scoredNotes.length > 0 ? Math.round((hits / scoredNotes.length) * 100) : 0;
+
+      const submitScore = async () => {
+        try {
+          const res = await fetch("/api/scores", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: session.user.id,
+              levelId: levelId,
+              score: score,
+              hits: hits,
+              misses: misses,
+              accuracy: accuracy,
+            }),
+          });
+
+          if (res.ok) {
+            setScoreSubmitted(true);
+          } else {
+            console.error("Failed to submit score:", await res.text());
+          }
+        } catch (error) {
+          console.error("Error submitting score:", error);
+        }
+      };
+
+      submitScore();
+    }
+  }, [gameOver, scoreSubmitted, session, chart, score, scoredNotes, levelId]);
+
   // ── Play / Pause ──
   const toggle = async () => {
     if (!chart) return;
@@ -1095,6 +1134,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     pitchHistoryRef.current = [];
     setScore(0); setCombo(0); setMaxCombo(0); setScoredNotes([]); setSongTimeMs(0);
     setGameOver(false);
+    setScoreSubmitted(false);
     setIsPlaying(true);
   };
 
