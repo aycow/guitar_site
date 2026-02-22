@@ -1,25 +1,39 @@
-import { MongoClient } from "mongodb";
+import mongoose from "mongoose";
 
-const uri = process.env.MONGODB_URI ?? "";
-if (!uri) throw new Error("Missing MONGODB_URI environment variable");
+const MONGODB_URI = process.env.MONGODB_URI ?? "";
 
-let client: MongoClient;
-let clientPromise: Promise<MongoClient>;
+if (!MONGODB_URI) {
+  throw new Error("Please define MONGODB_URI in your .env.local file");
+}
 
+// In development, attach the cached connection to the global object
+// so it survives Next.js hot reloads without opening a new connection each time.
 declare global {
   // eslint-disable-next-line no-var
-  var _mongoClientPromise: Promise<MongoClient> | undefined;
+  var _mongooseConn: typeof mongoose | null;
+  // eslint-disable-next-line no-var
+  var _mongoosePromise: Promise<typeof mongoose> | null;
 }
 
-if (process.env.NODE_ENV === "development") {
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri);
-    global._mongoClientPromise = client.connect();
+let cached = global._mongooseConn;
+let cachedPromise = global._mongoosePromise;
+
+if (!cached) {
+  cached = global._mongooseConn = null;
+  cachedPromise = global._mongoosePromise = null;
+}
+
+export async function connectDB(): Promise<typeof mongoose> {
+  if (cached) return cached;
+
+  if (!cachedPromise) {
+    cachedPromise = mongoose.connect(MONGODB_URI, {
+      bufferCommands: false,
+    });
+    global._mongoosePromise = cachedPromise;
   }
-  clientPromise = global._mongoClientPromise;
-} else {
-  client = new MongoClient(uri);
-  clientPromise = client.connect();
-}
 
-export default clientPromise;
+  cached = await cachedPromise;
+  global._mongooseConn = cached;
+  return cached;
+}
