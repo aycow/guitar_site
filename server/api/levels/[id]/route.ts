@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import clientPromise from "@/server/db/client";
-
-type Params = {
-  params: { id: string };
-};
+import { ObjectId } from "mongodb";
 
 export async function GET(
   _req: Request,
@@ -31,40 +28,48 @@ export async function GET(
   }
 }
 
-export async function PATCH(req: Request, { params }: Params) {
+export async function PATCH(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
   try {
-    await connectDB();
+    const client = await clientPromise;
+    const db = client.db("guitar_academy");
+    const levelsCollection = db.collection("levels");
 
     const { id } = params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json(
-        { ok: false, message: "Invalid level ID" },
-        { status: 400 }
-      );
+    // Validate if id is a valid ObjectId
+    let query: any = { id };
+    try {
+      if (ObjectId.isValid(id)) {
+        query = { _id: new ObjectId(id) };
+      }
+    } catch {
+      // If not a valid ObjectId, use id string as fallback
     }
 
     const body = await req.json();
 
     // TODO: add admin auth check here
-    const updated = await Level.findByIdAndUpdate(
-      id,
+    const updated = await levelsCollection.findOneAndUpdate(
+      query,
       { $set: body },
-      { new: true, runValidators: true }  // new: true returns the updated doc
-    ).lean();
+      { returnDocument: "after" }
+    );
 
-    if (!updated) {
+    if (!updated || !updated.value) {
       return NextResponse.json(
         { ok: false, message: "Level not found" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({ ok: true, data: updated });
+    return NextResponse.json({ ok: true, data: updated.value });
   } catch (err: unknown) {
     console.error("[PATCH /api/levels/:id]", err);
 
-    if (err instanceof Error && err.name === "ValidationError") {
+    if (err instanceof Error) {
       return NextResponse.json(
         { ok: false, message: err.message },
         { status: 400 }
@@ -78,23 +83,31 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(
+  _req: Request,
+  { params }: { params: { id: string } }
+) {
   try {
-    await connectDB();
+    const client = await clientPromise;
+    const db = client.db("guitar_academy");
+    const levelsCollection = db.collection("levels");
 
     const { id } = params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json(
-        { ok: false, message: "Invalid level ID" },
-        { status: 400 }
-      );
+    // Validate if id is a valid ObjectId
+    let query: any = { id };
+    try {
+      if (ObjectId.isValid(id)) {
+        query = { _id: new ObjectId(id) };
+      }
+    } catch {
+      // If not a valid ObjectId, use id string as fallback
     }
 
     // TODO: add admin auth check here
-    const deleted = await Level.findByIdAndDelete(id).lean();
+    const deleted = await levelsCollection.findOneAndDelete(query);
 
-    if (!deleted) {
+    if (!deleted || !deleted.value) {
       return NextResponse.json(
         { ok: false, message: "Level not found" },
         { status: 404 }

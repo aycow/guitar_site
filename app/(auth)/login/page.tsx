@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import Link from "next/link";
 
 export default function LoginPage() {
   const [action, setAction] = useState("Sign Up");
@@ -130,6 +131,13 @@ export default function LoginPage() {
           {action}
         </button>
       </div>
+
+      <p className="text-gray-300 text-sm mt-6">
+        Don't have an account?{" "}
+        <Link href="/register" className="text-red-400 hover:text-red-300 font-semibold">
+          Register here
+        </Link>
+      </p>
     </main>
   );
 }

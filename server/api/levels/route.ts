@@ -18,19 +18,34 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    await connectDB();
+    const client = await clientPromise;
+    const db = client.db("guitar_academy");
+    const levelsCollection = db.collection("levels");
 
     const body = await req.json();
 
-    // TODO: add admin auth check here before allowing level creation
-    const level = await Level.create(body);
+    // Validate required fields
+    if (!body.title || !body.artist) {
+      return NextResponse.json(
+        { ok: false, message: "Title and artist are required" },
+        { status: 400 }
+      );
+    }
 
-    return NextResponse.json({ ok: true, data: level }, { status: 201 });
+    // TODO: add admin auth check here before allowing level creation
+    const result = await levelsCollection.insertOne({
+      ...body,
+      createdAt: new Date(),
+    });
+
+    return NextResponse.json(
+      { ok: true, data: { _id: result.insertedId, ...body } },
+      { status: 201 }
+    );
   } catch (err: unknown) {
     console.error("[POST /api/levels]", err);
 
-    // Return mongoose validation errors in a readable format
-    if (err instanceof Error && err.name === "ValidationError") {
+    if (err instanceof Error) {
       return NextResponse.json(
         { ok: false, message: err.message },
         { status: 400 }
