@@ -123,11 +123,11 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-zinc-900 via-zinc-800 to-black">
+    <main className="min-h-screen" style={{ background: "rgba(0,0,0,0.92)", backdropFilter: "blur(8px)", fontFamily: "'Courier New', monospace", color: "#f0f0f0" }}>
       {/* Navigation Bar */}
-      <nav className="border-b border-zinc-700 bg-zinc-950/50 backdrop-blur-sm sticky top-0 z-50">
+      <nav className="border-b border-[#1f2937] bg-[#0d1117]/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white">🎸 GuitarGame</h1>
+          <h1 className="text-2xl font-bold text-white font-mono">🎸 GuitarGame</h1>
           <div className="flex gap-2 sm:gap-4">
             <Link href="/leaderboard">
               <Button variant="ghost" size="sm">
@@ -139,7 +139,7 @@ export default function Home() {
                 Login
               </Button>
             </Link>
-            <Link href="/game/1">
+            <Link href="/game/g_scale">
               <Button size="sm">Play</Button>
             </Link>
           </div>
@@ -149,7 +149,7 @@ export default function Home() {
       {/* Hero Section */}
       <section className="mx-auto max-w-7xl px-6 py-12">
         <div className="text-center mb-16">
-          <h2 className="text-5xl font-bold text-white mb-4">
+          <h2 className="text-5xl font-bold text-white mb-4 font-mono tracking-wide">
             Master Your Pitch Accuracy
           </h2>
           <p className="text-xl text-zinc-300 mb-8 max-w-2xl mx-auto">
@@ -164,7 +164,7 @@ export default function Home() {
             placeholder="Search songs or artists..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-6 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+            className="w-full bg-[#0b1114] border border-[#1f2937] rounded-lg px-6 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
           />
         </div>
 
@@ -228,7 +228,7 @@ export default function Home() {
 
           {/* Results Count */}
           <div className="flex items-end">
-            <div className="w-full bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-2">
+            <div className="w-full bg-[#07110d] border border-[#113524] rounded-lg px-4 py-2">
               <p className="text-emerald-400 font-semibold text-center">
                 {filteredLevels.length} Song{filteredLevels.length !== 1 ? "s" : ""}
               </p>
@@ -334,7 +334,7 @@ export default function Home() {
         <div className="bg-zinc-900/50 border border-zinc-700 rounded-xl p-8">
           <h3 className="text-2xl font-bold text-white mb-6">Quick Access</h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <Link href="/game/1">
+            <Link href="/game/g_scale">
               <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/30 hover:border-emerald-500/60 rounded-lg p-6 text-center transition-all cursor-pointer hover:shadow-lg hover:shadow-emerald-500/20">
                 <div className="text-4xl mb-3">🎮</div>
                 <p className="text-white font-semibold">Campaign</p>

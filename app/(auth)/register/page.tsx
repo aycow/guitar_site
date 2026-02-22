@@ -86,12 +86,15 @@ export default function RegisterPage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b">
-      <h1 className="text-6xl font-bold text-white select-none mb-8 text-center">
+    <main
+      className="flex min-h-screen flex-col items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.92)", backdropFilter: "blur(8px)", fontFamily: "'Courier New', monospace", color: "#f0f0f0" }}
+    >
+      <h1 style={{ fontFamily: "'Courier New', monospace" }} className="text-6xl font-bold select-none mb-8 text-center">
         Create Your Account
       </h1>
 
-      <p className="text-gray-300 mb-8 text-center">
+      <p className="text-zinc-300 mb-8 text-center">
         Join us and start your guitar learning journey
       </p>
 
@@ -102,7 +105,7 @@ export default function RegisterPage() {
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           disabled={loading}
-          className="w-72 px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-400 text-black bg-white disabled:opacity-50"
+          className="w-72 px-4 py-2 rounded-lg border border-[#1f2937] focus:outline-none focus:ring-2 focus:ring-emerald-500 text-white bg-[#061014] disabled:opacity-50"
         />
 
         <input
@@ -111,7 +114,7 @@ export default function RegisterPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={loading}
-          className="w-72 px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-400 text-black bg-white disabled:opacity-50"
+          className="w-72 px-4 py-2 rounded-lg border border-[#1f2937] focus:outline-none focus:ring-2 focus:ring-emerald-500 text-white bg-[#061014] disabled:opacity-50"
         />
 
         <input
@@ -120,7 +123,7 @@ export default function RegisterPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={loading}
-          className="w-72 px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-400 text-black bg-white disabled:opacity-50"
+          className="w-72 px-4 py-2 rounded-lg border border-[#1f2937] focus:outline-none focus:ring-2 focus:ring-emerald-500 text-white bg-[#061014] disabled:opacity-50"
         />
 
         <input
@@ -129,11 +132,11 @@ export default function RegisterPage() {
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
           disabled={loading}
-          className="w-72 px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-400 text-black bg-white disabled:opacity-50"
+          className="w-72 px-4 py-2 rounded-lg border border-[#1f2937] focus:outline-none focus:ring-2 focus:ring-emerald-500 text-white bg-[#061014] disabled:opacity-50"
         />
 
         {errorMessage && (
-          <p className="text-sm text-red-400 font-semibold text-center max-w-72">
+          <p className="text-sm text-amber-400 font-semibold text-center max-w-72">
             {errorMessage}
           </p>
         )}
@@ -143,14 +146,14 @@ export default function RegisterPage() {
         <button
           onClick={handleRegister}
           disabled={loading}
-          className="bg-red-600 text-white px-8 py-3 rounded-lg hover:scale-95 transform transition duration-200 disabled:opacity-50 disabled:hover:scale-100 font-semibold"
+          className="bg-emerald-500 text-black px-8 py-3 rounded-lg hover:scale-95 transform transition duration-200 disabled:opacity-50 disabled:hover:scale-100 font-semibold"
         >
           {loading ? "Registering..." : "Register"}
         </button>
 
-        <p className="text-gray-300 text-sm">
+        <p className="text-zinc-300 text-sm">
           Already have an account?{" "}
-          <Link href="/login" className="text-red-400 hover:text-red-300 font-semibold">
+          <Link href="/login" className="text-amber-400 hover:text-amber-300 font-semibold">
             Log In
           </Link>
         </p>
