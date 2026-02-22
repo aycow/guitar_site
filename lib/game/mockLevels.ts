@@ -1,8 +1,8 @@
 import type { Level } from "@/types/game";
 
 export const mockLevels: Level[] = [
-  {
-    id: "1",
+    {
+    id: "c_major_scale", // ✅ must match public/charts/c_major_scale.json
     title: "C Major Scale",
     artist: "Music Theory",
     bpm: 60,
@@ -14,7 +14,7 @@ export const mockLevels: Level[] = [
       { id: "1", targetHz: 262, startMs: 0, durationMs: 500 },
       { id: "2", targetHz: 294, startMs: 500, durationMs: 500 },
     ],
-  },
+  },  
   {
     id: "2",
     title: "Pentatonic Blues",
@@ -157,4 +157,19 @@ export const mockLevels: Level[] = [
       { id: "4", targetHz: 261.63, startMs: 750, durationMs: 250 },
     ],
   },
+  {
+  id: "apollo_brown_butter", // MUST match: public/charts/apollo_brown_butter.json
+  title: "Butter",
+  artist: "Apollo Brown",
+  bpm: 86,                   // pick whatever (or read bpmHint from your chart json)
+  difficulty: "medium",
+  category: "songs",
+  durationMs: 180000,        // ~3 minutes (approx is fine)
+  albumCover: "https://images.unsplash.com/photo-1511379938547-c1f69b13d835?w=300&h=300&fit=crop",
+  notes: [
+    // these are basically unused by your /game/[levelId] page (it loads chart JSON),
+    // but your Level type requires them, so keep a tiny placeholder:
+    { id: "1", targetHz: 110, startMs: 0, durationMs: 500 },
+  ],
+},
 ];

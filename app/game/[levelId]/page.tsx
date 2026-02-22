@@ -297,7 +297,491 @@ function ResultsScreen({
     </div>
   );
 }
+function MeasurePreview({
+  chart,
+  songTimeMs,
+  windowMeasures = 2,
+  beatsPerMeasure = 4,
+}: {
+  chart: Chart;
+  songTimeMs: number;
+  windowMeasures?: number;
+  beatsPerMeasure?: number;
+}) {
+  const bpm = chart.bpmHint ?? null;
 
+  // Compute the visible window in ms.
+  const { startMs, endMs, windowMs, beatMs, measureMs, measureStartIndex } = useMemo(() => {
+    if (!bpm || bpm <= 0) {
+      // Fallback: just show next 4 seconds if BPM is unknown
+      const start = songTimeMs;
+      const win = 4000;
+      return {
+        startMs: start,
+        endMs: start + win,
+        windowMs: win,
+        beatMs: null as number | null,
+        measureMs: null as number | null,
+        measureStartIndex: null as number | null,
+      };
+    }
+
+    const beat = 60000 / bpm;
+    const measure = beatsPerMeasure * beat;
+
+    // Snap start to the beginning of the current measure
+    const start = Math.floor(songTimeMs / measure) * measure;
+    const win = windowMeasures * measure;
+
+    return {
+      startMs: start,
+      endMs: start + win,
+      windowMs: win,
+      beatMs: beat,
+      measureMs: measure,
+      measureStartIndex: Math.floor(start / measure),
+    };
+  }, [bpm, beatsPerMeasure, songTimeMs, windowMeasures]);
+
+  // Grab events that fall inside the preview window
+  const visibleEvents = useMemo(() => {
+    const evs = chart.events.filter((e) => e.timeMs >= startMs && e.timeMs <= endMs);
+    // Cap to avoid rendering hundreds of DOM nodes if charts get dense
+    return evs.slice(0, 96);
+  }, [chart.events, startMs, endMs]);
+
+  // "Now" playhead position (0..100%)
+  const nowPct = useMemo(() => {
+    const p = ((songTimeMs - startMs) / windowMs) * 100;
+    return Math.max(0, Math.min(100, p));
+  }, [songTimeMs, startMs, windowMs]);
+
+  // Build beat/measures tick marks
+  const ticks = useMemo(() => {
+    if (!beatMs) {
+      // Fallback: ticks every 500ms
+      const step = 500;
+      const out: { pct: number; strong: boolean }[] = [];
+      for (let t = startMs; t <= endMs; t += step) {
+        out.push({ pct: ((t - startMs) / windowMs) * 100, strong: (t - startMs) % 2000 === 0 });
+      }
+      return out;
+    }
+
+    const out: { pct: number; strong: boolean }[] = [];
+    const totalBeats = Math.ceil(windowMs / beatMs);
+    for (let i = 0; i <= totalBeats; i++) {
+      const t = startMs + i * beatMs;
+      const pct = ((t - startMs) / windowMs) * 100;
+      const strong = (i % beatsPerMeasure) === 0; // measure boundary
+      out.push({ pct, strong });
+    }
+    return out;
+  }, [beatMs, beatsPerMeasure, endMs, startMs, windowMs]);
+
+  return (
+    <div
+      style={{
+        background: "#111827",
+        border: "1px solid #1f2937",
+        borderRadius: 8,
+        padding: "14px 16px",
+        marginBottom: 24,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+        <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: 2 }}>
+          {bpm ? "UPCOMING MEASURES" : "UPCOMING NOTES"}
+        </div>
+        <div style={{ fontSize: 11, color: "#4b5563" }}>
+          {bpm
+            ? `Measure ${((measureStartIndex ?? 0) + 1)} → ${((measureStartIndex ?? 0) + windowMeasures)} · ${Math.round(bpm)} BPM`
+            : "BPM unknown · showing next 4s"}
+        </div>
+      </div>
+
+      <div
+        style={{
+          position: "relative",
+          height: 78,
+          borderRadius: 8,
+          background: "#0a0a0f",
+          border: "1px solid #374151",
+          overflow: "hidden",
+        }}
+      >
+        {/* Beat/measure ticks */}
+        {ticks.map((t, i) => (
+          <div
+            key={i}
+            style={{
+              position: "absolute",
+              left: `${t.pct}%`,
+              top: 0,
+              bottom: 0,
+              width: t.strong ? 2 : 1,
+              background: t.strong ? "#374151" : "#1f2937",
+              opacity: t.strong ? 0.8 : 0.7,
+            }}
+          />
+        ))}
+
+        {/* Notes (events) */}
+        {visibleEvents.map((ev, i) => {
+          const pct = ((ev.timeMs - startMs) / windowMs) * 100;
+          const isLabeled = i < 10; // label only first few to avoid clutter
+          const noteName = midiToName(ev.notes[0]);
+          const sustainPct =
+            ev.durationMs > 0 ? Math.min(100 - pct, (ev.durationMs / windowMs) * 100) : 0;
+
+          return (
+            <div key={`${ev.timeMs}-${i}`} style={{ position: "absolute", left: `${pct}%`, top: 0, bottom: 0 }}>
+              {/* sustain bar */}
+              {sustainPct > 0 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 42,
+                    height: 6,
+                    width: `${sustainPct}%`,
+                    background: "#60a5fa33",
+                    border: "1px solid #60a5fa55",
+                    borderRadius: 999,
+                  }}
+                />
+              )}
+
+              {/* note marker */}
+              <div
+                title={`${noteName} @ ${Math.round(ev.timeMs)}ms`}
+                style={{
+                  position: "absolute",
+                  left: -1,
+                  top: 14,
+                  width: 2,
+                  height: 46,
+                  background: "#60a5fa",
+                  boxShadow: "0 0 10px #60a5fa66",
+                  borderRadius: 2,
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  left: -4,
+                  top: 10,
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: "#60a5fa",
+                  boxShadow: "0 0 12px #60a5fa66",
+                }}
+              />
+
+              {/* label */}
+              {isLabeled && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 8,
+                    fontSize: 10,
+                    color: "#9ca3af",
+                    whiteSpace: "nowrap",
+                    userSelect: "none",
+                  }}
+                >
+                  {noteName}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* NOW playhead */}
+        <div
+          style={{
+            position: "absolute",
+            left: `${nowPct}%`,
+            top: 0,
+            bottom: 0,
+            width: 2,
+            background: "#facc15",
+            boxShadow: "0 0 18px #facc1580, 0 0 40px #facc1540",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: `${nowPct}%`,
+            top: 0,
+            transform: "translateX(-50%)",
+            padding: "2px 6px",
+            fontSize: 10,
+            color: "#111827",
+            background: "#facc15",
+            borderRadius: 6,
+            fontWeight: 800,
+            letterSpacing: 1,
+          }}
+        >
+          NOW
+        </div>
+      </div>
+
+      <div style={{ fontSize: 11, color: "#4b5563", marginTop: 8 }}>
+        Tip: if the grid feels “off”, make sure your chart JSON has a reasonable <code>bpmHint</code>.
+      </div>
+    </div>
+  );
+}
+
+
+
+function midiToVexKey(m: number) {
+  const names = ["c","c#","d","d#","e","f","f#","g","g#","a","a#","b"];
+  const name = names[m % 12];
+  const octave = Math.floor(m / 12) - 1;
+  return `${name}/${octave}`;
+}
+
+function accidentalForKey(key: string): "#" | "b" | null {
+  if (key.includes("#")) return "#";
+  // (If you later generate flats, handle "b" here.)
+  return null;
+}
+
+export function StaffPreview({
+  chart,
+  songTimeMs,
+  measuresToShow = 2,
+  beatsPerMeasure = 4,
+  beatValue = 4,
+  subdivisionPerBeat = 4, // 4 => 16th notes in 4/4
+}: {
+  chart: Chart;
+  songTimeMs: number;
+  measuresToShow?: number;
+  beatsPerMeasure?: number;
+  beatValue?: number;
+  subdivisionPerBeat?: number;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // We render the score only when the *current measure* changes.
+  const bpm = chart.bpmHint ?? null;
+
+  const beatMs = useMemo(() => (bpm ? 60000 / bpm : null), [bpm]);
+  const measureMs = useMemo(
+    () => (beatMs ? beatsPerMeasure * beatMs : null),
+    [beatMs, beatsPerMeasure]
+  );
+
+  const slotMs = useMemo(() => {
+    if (!beatMs) return null;
+    return beatMs / subdivisionPerBeat;
+  }, [beatMs, subdivisionPerBeat]);
+
+  const currentMeasureIndex = useMemo(() => {
+    if (!measureMs) return 0;
+    return Math.floor(songTimeMs / measureMs);
+  }, [songTimeMs, measureMs]);
+
+  const startMeasureIndex = currentMeasureIndex;
+
+  // Playhead positioning: we’ll compute slot X positions from the rendered notes (first measure only).
+  const slotXsRef = useRef<number[] | null>(null);
+  const [playheadX, setPlayheadX] = useState<number | null>(null);
+
+  // Update playhead without re-rendering the whole stave
+  useEffect(() => {
+    if (!measureMs || !slotMs) return;
+    const xs = slotXsRef.current;
+    if (!xs || xs.length < 2) return;
+
+    const measureStartMs = startMeasureIndex * measureMs;
+    const pos = (songTimeMs - measureStartMs) / slotMs; // slot units
+    const i0 = Math.max(0, Math.min(xs.length - 1, Math.floor(pos)));
+    const i1 = Math.max(0, Math.min(xs.length - 1, i0 + 1));
+    const frac = Math.max(0, Math.min(1, pos - i0));
+
+    const x = xs[i0] + (xs[i1] - xs[i0]) * frac;
+    setPlayheadX(x);
+  }, [songTimeMs, measureMs, slotMs, startMeasureIndex]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    el.innerHTML = "";
+
+    if (!bpm || !beatMs || !measureMs || !slotMs) {
+      el.innerHTML = `<div style="color:#9ca3af;font-family:monospace;font-size:12px;">
+        Need <code>bpmHint</code> to render staff notation (so we can quantize).
+      </div>`;
+      return;
+    }
+
+    (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mod: any = await import("vexflow");
+      const VF = mod.VexFlow ?? mod.default ?? mod;
+
+      const { Renderer, Stave, Voice, Formatter, StaveNote, Accidental, GhostNote } = VF;
+
+      // Layout
+      const padding = 12;
+      const measureW = 360;
+      const height = 160;
+      const width = measuresToShow * measureW + padding * 2;
+
+      const renderer = new Renderer(el, Renderer.Backends.SVG);
+      renderer.resize(width, height);
+      const ctx = renderer.getContext();
+
+      // Choose clef based on rough range (optional but helps readability)
+      // Bass track: force bass clef + display an octave up (written notation)
+      const clef = "bass";
+      const NOTATION_TRANSPOSE = 12;
+
+      // Build measures as 16th-note slots (or whatever subdivisionPerBeat is)
+      const slotsPerMeasure = beatsPerMeasure * subdivisionPerBeat;
+
+      type VFTickable = { getAbsoluteX?: () => number }; // enough for playhead X capture
+
+      const buildMeasureNotes = (measureIndex: number): { notes: VFTickable[] } => {
+        const startMs = measureIndex * measureMs;
+        const endMs = startMs + measureMs;
+
+        const slots: number[][] = Array.from({ length: slotsPerMeasure }, () => []);
+
+        for (const ev of chart.events) {
+          if (ev.timeMs < startMs || ev.timeMs >= endMs) continue;
+          const rel = ev.timeMs - startMs;
+
+          // Quantize to grid (slightly bias earlier so it "feels" better)
+          const slot = Math.floor((rel + slotMs * 0.25) / slotMs);
+          const clamped = Math.max(0, Math.min(slotsPerMeasure - 1, slot));
+
+          slots[clamped].push(ev.notes[0]);
+        }
+
+        const notes: VFTickable[] = slots.map((midiList) => {
+          if (midiList.length === 0) {
+            return new GhostNote({ duration: "16" }); // spacing, no visible rest
+          }
+
+          const keys = midiList
+            .slice(0, 4)
+            .sort((a, b) => a - b)
+            .map((m) => midiToVexKey(m + NOTATION_TRANSPOSE));
+
+          const n = new StaveNote({ clef, keys, duration: "16" });
+
+          keys.forEach((k, i) => {
+            const acc = accidentalForKey(k);
+            if (acc) n.addModifier(new Accidental(acc), i);
+          });
+
+          return n;
+        });
+
+        return { notes }; // ✅ MUST be inside the function
+      };
+
+      // Draw each measure as its own stave (barlines + ledger lines happen automatically)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const voices: any[] = [];
+      for (let i = 0; i < measuresToShow; i++) {
+        const measureIndex = startMeasureIndex + i;
+        const x = padding + i * measureW;
+        const y = 36;
+
+        const stave = new Stave(x, y, measureW);
+
+        if (i === 0) {
+          stave.addClef(clef).addTimeSignature(`${beatsPerMeasure}/${beatValue}`);
+        }
+        stave.setContext(ctx).draw();
+
+        const { notes } = buildMeasureNotes(measureIndex);
+
+        const voice = new Voice({ num_beats: beatsPerMeasure, beat_value: beatValue });
+        voice.addTickables(notes);
+
+        new Formatter().joinVoices([voice]).formatToStave([voice], stave);
+        voice.draw(ctx, stave);
+
+        voices.push({ voice, stave, notes, isFirst: i === 0 });
+      }
+
+      // Capture X positions for each slot in the FIRST measure (for accurate playhead)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const first = voices.find((v: any) => v.isFirst);
+      if (first) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const xs = first.notes.map((n: any) => n.getAbsoluteX()).filter((x: any) => typeof x === "number");
+        slotXsRef.current = xs.length ? xs : null;
+      } else {
+        slotXsRef.current = null;
+      }
+    })();
+  }, [
+    bpm,
+    beatMs,
+    measureMs,
+    slotMs,
+    chart,
+    measuresToShow,
+    beatsPerMeasure,
+    beatValue,
+    subdivisionPerBeat,
+    startMeasureIndex,
+  ]);
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        background: "#111827",
+        border: "1px solid #1f2937",
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 24,
+      }}
+    >
+      <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: 2, marginBottom: 8 }}>
+        UPCOMING MEASURES (STAFF)
+      </div>
+
+      <div style={{ position: "relative" }}>
+        {/* VexFlow renders into this div */}
+        <div ref={containerRef} />
+
+        {/* Playhead overlay */}
+        {playheadX !== null && (
+          <div
+            style={{
+              position: "absolute",
+              left: playheadX,
+              top: 0,
+              bottom: 0,
+              width: 2,
+              background: "#facc15",
+              boxShadow: "0 0 18px #facc1580",
+              pointerEvents: "none",
+            }}
+          />
+        )}
+      </div>
+
+      <div style={{ fontSize: 11, color: "#4b5563", marginTop: 8 }}>
+        Readability requires quantization. If this looks “off-beat”, your <code>bpmHint</code> (or chart timings) don’t match the audio.
+      </div>
+    </div>
+  );
+}
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function GamePage({ params }: { params: Promise<{ levelId: string }> }) {
@@ -804,8 +1288,9 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
           )}
         </div>
       </div>
-
+      <StaffPreview chart={chart} songTimeMs={songTimeMs} />
       {/* Recent notes */}
+      
       {scoredNotes.length > 0 && (
         <div style={{ marginBottom:24 }}>
           <div style={{ fontSize:10, color:"#6b7280", letterSpacing:2, marginBottom:8 }}>RECENT NOTES</div>
