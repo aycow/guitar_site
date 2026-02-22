@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { connectDB } from "@/server/db/client";
-import Level from "@/server/db/models/Level";
+import clientPromise from "@/server/db/client";
 
 export async function GET() {
   try {

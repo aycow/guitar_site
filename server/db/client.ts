@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import { MongoClient } from "mongodb";
 
 const MONGODB_URI = process.env.MONGODB_URI ?? "";
 
@@ -10,30 +10,26 @@ if (!MONGODB_URI) {
 // so it survives Next.js hot reloads without opening a new connection each time.
 declare global {
   // eslint-disable-next-line no-var
-  var _mongooseConn: typeof mongoose | null;
+  var _mongoClient: MongoClient | null;
   // eslint-disable-next-line no-var
-  var _mongoosePromise: Promise<typeof mongoose> | null;
+  var _mongoClientPromise: Promise<MongoClient> | null;
 }
 
-let cached = global._mongooseConn;
-let cachedPromise = global._mongoosePromise;
+let cached = global._mongoClient;
+let cachedPromise = global._mongoClientPromise;
 
 if (!cached) {
-  cached = global._mongooseConn = null;
-  cachedPromise = global._mongoosePromise = null;
+  cached = global._mongoClient = null;
+  cachedPromise = global._mongoClientPromise = null;
 }
 
-export async function connectDB(): Promise<typeof mongoose> {
-  if (cached) return cached;
+const clientPromise: Promise<MongoClient> = 
+  cachedPromise ||
+  (global._mongoClientPromise = MongoClient.connect(MONGODB_URI).then(
+    (client) => {
+      cached = global._mongoClient = client;
+      return client;
+    }
+  ));
 
-  if (!cachedPromise) {
-    cachedPromise = mongoose.connect(MONGODB_URI, {
-      bufferCommands: false,
-    });
-    global._mongoosePromise = cachedPromise;
-  }
-
-  cached = await cachedPromise;
-  global._mongooseConn = cached;
-  return cached;
-}
+export default clientPromise;

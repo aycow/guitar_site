@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import clientPromise from "@/server/db/client";
 
+type Params = {
+  params: { id: string };
+};
+
 export async function GET(
   _req: Request,
   { params }: { params: { id: string } }
