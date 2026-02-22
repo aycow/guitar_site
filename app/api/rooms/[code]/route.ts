@@ -8,7 +8,7 @@ export async function GET(
 ) {
   try {
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
     const room = await db.collection("rooms").findOne({ code: params.code });
 
     if (!room) {
@@ -45,7 +45,7 @@ export async function PUT(
     const body = await req.json();
 
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
 
     // If adding a player, add to players array
     if (body.playerAction === "join" && body.playerName) {

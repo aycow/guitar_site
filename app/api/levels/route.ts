@@ -5,7 +5,7 @@ import { getToken } from "next-auth/jwt";
 export async function GET() {
   try {
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
     const levels = await db.collection("levels").find({}).toArray();
     return NextResponse.json(levels);
   } catch (error) {
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     // TODO: implement proper admin role system
     const body = await req.json();
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
 
     const levelData = {
       ...body,

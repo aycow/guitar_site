@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     const roomCode = Math.random().toString(36).slice(2, 7).toUpperCase();
 
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
 
     // Create room document with authenticated user
     const roomDoc = {

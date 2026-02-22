@@ -11,7 +11,7 @@ export async function GET() {
     console.log("✅ Connected!");
 
     console.log("\n2️⃣ Selecting database...");
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
     console.log("✅ Database selected: guitar_academy");
 
     console.log("\n3️⃣ Accessing collections...");

@@ -10,7 +10,7 @@ export async function GET(req: Request) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "100"), 1000);
 
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
 
     let query: Record<string, unknown> = {};
     if (levelId) {
@@ -106,7 +106,7 @@ export async function POST(req: Request) {
     }
 
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
 
     const scoreDoc = {
       userId: userId,

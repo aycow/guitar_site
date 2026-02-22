@@ -10,7 +10,7 @@ export async function POST(req: Request) {
 
   try {
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
     const users = db.collection("users");
 
     const user = await users.findOne({ email });

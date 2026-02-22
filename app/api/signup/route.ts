@@ -77,7 +77,7 @@ export async function POST(req: Request) {
       throw connectionError;
     }
 
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
     console.log("✅ Database selected: guitar_academy");
 
     const users = db.collection("users");

@@ -9,7 +9,7 @@ export async function GET(
 ) {
   try {
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
 
     let query: any = { id: params.id };
     // Also try to find by MongoDB _id if the id looks like an ObjectId
@@ -51,7 +51,7 @@ export async function PATCH(
     }
 
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
     const body = await req.json();
 
     let query: any = { id: params.id };
@@ -102,7 +102,7 @@ export async function DELETE(
     }
 
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
 
     let query: any = { id: params.id };
     if (ObjectId.isValid(params.id)) {

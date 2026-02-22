@@ -28,7 +28,7 @@ export const authOptions: NextAuthOptions = {
           const client = await clientPromise;
           console.log("✅ MongoDB client connected");
 
-          const db = client.db("guitar_academy");
+          const db = client.db("guitar-game");
           console.log("✅ Database selected: guitar_academy");
 
           const users = db.collection("users");

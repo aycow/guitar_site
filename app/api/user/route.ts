@@ -14,7 +14,7 @@ export async function GET(req: Request) {
     }
 
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
     const users = db.collection("users");
 
     const user = await users.findOne({ id: session.user.id });
@@ -62,7 +62,7 @@ export async function PATCH(req: Request) {
     const body = await req.json();
 
     const client = await clientPromise;
-    const db = client.db("guitar_academy");
+    const db = client.db("guitar-game");
     const users = db.collection("users");
 
     // Only allow updating specific fields
