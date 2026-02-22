@@ -165,7 +165,7 @@ export default function Home() {
       {/* ── Navigation Bar ── */}
       <nav className="border-b border-[#1f2937] bg-[#0d1117]/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white font-mono">🎸 GuitarGame</h1>
+          <h1 className="text-2xl font-bold text-white font-mono">🎸 Guitarverse</h1>
           <div className="flex items-center gap-2 sm:gap-4">
             <Link href="/leaderboard">
               <Button variant="ghost" size="sm">

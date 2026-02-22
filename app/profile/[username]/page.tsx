@@ -85,7 +85,7 @@ function PublicNav() {
         fontFamily: "'Courier New', monospace",
       }}>
         <Link href="/" style={{ textDecoration: "none" }}>
-          <span style={{ fontSize: 20, fontWeight: 700, color: "#fff" }}>🎸 GuitarGame</span>
+          <span style={{ fontSize: 20, fontWeight: 700, color: "#fff" }}>🎸 Guitarverse</span>
         </Link>
         <div style={{ display: "flex", gap: 12 }}>
           <Link href="/leaderboard"><Button variant="ghost" size="sm">Leaderboard</Button></Link>
