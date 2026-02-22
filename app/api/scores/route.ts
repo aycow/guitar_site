@@ -1,23 +1,27 @@
+// app/api/scores/route.ts
+
 import { NextResponse } from "next/server";
-import clientPromise from "@/lib/mongodb";
-import { getAuthSession } from "@/lib/auth";
-import type { SubmitScoreRequest, GetLeaderboardRequest } from "@/types/api";
+import clientPromise from "@/server/db/client";
+import { ObjectId } from "mongodb";
+import type { SubmitScoreRequest } from "@/types/api";
 
 export async function GET(req: Request) {
+  console.log("[SCORES] GET leaderboard called");
+
   try {
     const { searchParams } = new URL(req.url);
     const levelId = searchParams.get("levelId");
     const limit = Math.min(parseInt(searchParams.get("limit") || "100"), 1000);
 
     const client = await clientPromise;
-    const db = client.db("guitar-game");
+    const db = client.db("guitar_academy");
 
-    let query: Record<string, unknown> = {};
-    if (levelId) {
-      query.levelId = levelId;
-    }
+    const query: Record<string, unknown> = {};
+    if (levelId) query.levelId = levelId;
 
-    // Get all scores, sorted by score (descending) then by accuracy (descending)
+    console.log("[SCORES] Querying scores with filter:", query);
+
+    // Get best score per user
     const scores = await db
       .collection("scores")
       .aggregate([
@@ -33,83 +37,82 @@ export async function GET(req: Request) {
             createdAt: { $max: "$createdAt" },
           },
         },
-        {
-          $sort: { bestScore: -1, bestAccuracy: -1 },
-        },
+        { $sort: { bestScore: -1, bestAccuracy: -1 } },
         { $limit: limit },
       ])
       .toArray();
 
-    // Get user names
-    const userIds = scores.map((s) => s._id);
+    console.log("[SCORES] Found", scores.length, "score entries");
+
+    // userId is stored as a string (the _id.toString() from auth)
+    // so we need to convert back to ObjectId to look up users
+    const userIds = scores.map((s) => {
+      try {
+        return new ObjectId(s._id as string);
+      } catch {
+        return null;
+      }
+    }).filter(Boolean) as ObjectId[];
+
+    console.log("[SCORES] Looking up", userIds.length, "users");
+
     const users = await db
       .collection("users")
-      .find({ id: { $in: userIds } })
+      .find({ _id: { $in: userIds } })
       .toArray();
 
-    const userMap = new Map(users.map((u) => [u.id, u.name]));
+    console.log("[SCORES] Found", users.length, "matching users");
 
-    const entries = scores.map((score, index) => ({
-      rank: index + 1,
-      userId: score._id,
-      playerName: userMap.get(score._id) || "Unknown Player",
-      score: score.bestScore,
-      accuracy: score.bestAccuracy,
-      hits: score.hits,
-      misses: score.misses,
-      levelId: score.levelId,
-      createdAt: score.createdAt?.toISOString() || new Date().toISOString(),
-    }));
+    // Map _id (as string) → username
+    const userMap = new Map(users.map((u) => [u._id.toString(), u.username as string]));
 
-    return NextResponse.json({
-      entries,
-      totalPlayers: entries.length,
+    const entries = scores.map((score, index) => {
+      const userId = score._id as string;
+      const playerName = userMap.get(userId) || "Unknown Player";
+
+      if (playerName === "Unknown Player") {
+        console.warn("[SCORES] ⚠️ Could not find username for userId:", userId);
+      }
+
+      return {
+        rank: index + 1,
+        userId,
+        playerName,
+        score: score.bestScore as number,
+        accuracy: score.bestAccuracy as number,
+        hits: score.hits as number,
+        misses: score.misses as number,
+        levelId: score.levelId as string,
+        createdAt: (score.createdAt as Date)?.toISOString() ?? new Date().toISOString(),
+      };
     });
+
+    console.log("[SCORES] ✅ Returning", entries.length, "leaderboard entries");
+
+    return NextResponse.json({ entries, totalPlayers: entries.length });
   } catch (error) {
-    console.error("Error fetching leaderboard:", error);
-    return NextResponse.json(
-      { message: "Failed to fetch leaderboard" },
-      { status: 500 }
-    );
+    console.error("[SCORES] ❌ Error fetching leaderboard:", error);
+    return NextResponse.json({ message: "Failed to fetch leaderboard" }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
+  console.log("[SCORES] POST score submission called");
+
   try {
-    // Verify authentication
-    const session = await getAuthSession();
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { message: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
     const body: SubmitScoreRequest = await req.json();
+    console.log("[SCORES] Incoming score:", body);
 
-    // Validate required fields
-    if (!body.levelId || body.score === undefined) {
-      return NextResponse.json(
-        { message: "Missing required fields" },
-        { status: 400 }
-      );
-    }
-
-    // Security: Verify the userId matches the authenticated user
-    // Allow body.userId to be optional (use session.user.id if not provided)
-    const userId = body.userId || session.user.id;
-    if (body.userId && body.userId !== session.user.id) {
-      return NextResponse.json(
-        { message: "Cannot submit scores for other users" },
-        { status: 403 }
-      );
+    if (!body.userId || !body.levelId || body.score === undefined) {
+      console.warn("[SCORES] ❌ Missing required fields");
+      return NextResponse.json({ message: "Missing required fields" }, { status: 400 });
     }
 
     const client = await clientPromise;
-    const db = client.db("guitar-game");
+    const db = client.db("guitar_academy");
 
     const scoreDoc = {
-      userId: userId,
+      userId: body.userId,
       levelId: body.levelId,
       roomCode: body.roomCode,
       score: body.score,
@@ -121,24 +124,23 @@ export async function POST(req: Request) {
     };
 
     const result = await db.collection("scores").insertOne(scoreDoc);
+    console.log("[SCORES] ✅ Score saved, id:", result.insertedId.toString());
 
-    // Update user stats
+    // Update user aggregate stats
     await db.collection("users").updateOne(
-      { id: userId },
+      { _id: new ObjectId(body.userId) },
       {
         $inc: { totalScore: body.score, totalLevels: 1 },
         $max: { bestAccuracy: body.accuracy },
         $set: { updatedAt: new Date() },
-      },
-      { upsert: true }
+      }
     );
+
+    console.log("[SCORES] ✅ User stats updated for userId:", body.userId);
 
     return NextResponse.json({ ok: true, message: "Score saved successfully" });
   } catch (error) {
-    console.error("Error saving score:", error);
-    return NextResponse.json(
-      { message: "Failed to save score" },
-      { status: 500 }
-    );
+    console.error("[SCORES] ❌ Error saving score:", error);
+    return NextResponse.json({ message: "Failed to save score" }, { status: 500 });
   }
 }
