@@ -3,7 +3,7 @@
   "title": "MIDI Bass Apollo Brown - Butter - Collected Compositions",
   "audioUrl": "/audio/REPLACE_ME.ogg",
   "offsetMs": 0,
-  "bpmHint": null,
+  "bpmHint": 86,
   "events": [
     {
       "timeMs": 3880,
