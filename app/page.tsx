@@ -6,58 +6,75 @@ import { useState, useMemo } from "react";
 import { mockLevels } from "@/lib/game/mockLevels";
 import type { Level } from "@/types/game";
 
+interface FilteredLevel extends Level {
+  difficulty: "easy" | "medium" | "hard";
+  category: string;
+  durationMs: number;
+}
 
 export default function Home() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>("all");
   const [selectedGenre, setSelectedGenre] = useState<string>("all");
   const [selectedDuration, setSelectedDuration] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Get unique genres and difficulty levels
-  const genres = useMemo(() => {
+  // Get unique genres
+  const genres = useMemo<string[]>(() => {
     const categories = Array.from(
-      new Set(mockLevels.map((level) => level.category))
+      new Set(
+        mockLevels
+          .filter((level) => level.category)
+          .map((level) => level.category as string)
+      )
     );
-    return categories;
+    return categories.sort();
   }, []);
 
-  const difficulties = ["easy", "medium", "hard"];
-
   // Filter levels based on criteria
-  const filteredLevels = useMemo(() => {
-    return mockLevels.filter((level) => {
-      // Difficulty filter
-      if (selectedDifficulty !== "all" && level.difficulty !== selectedDifficulty) {
-        return false;
-      }
+  const filteredLevels = useMemo<FilteredLevel[]>(() => {
+    return mockLevels
+      .filter((level): level is FilteredLevel => {
+        // Ensure required fields exist with proper defaults
+        return (
+          level.difficulty !== undefined &&
+          level.category !== undefined &&
+          level.durationMs !== undefined
+        );
+      })
+      .filter((level) => {
+        // Difficulty filter
+        if (selectedDifficulty !== "all" && level.difficulty !== selectedDifficulty) {
+          return false;
+        }
 
-      // Genre/Category filter
-      if (selectedGenre !== "all" && level.category !== selectedGenre) {
-        return false;
-      }
+        // Genre/Category filter
+        if (selectedGenre !== "all" && level.category !== selectedGenre) {
+          return false;
+        }
 
-      // Duration filter
-      if (selectedDuration !== "all") {
-        const durationMinutes = level.durationMs / 60000;
-        if (selectedDuration === "short" && durationMinutes > 3) return false;
-        if (selectedDuration === "medium" && (durationMinutes <= 2 || durationMinutes > 5)) return false;
-        if (selectedDuration === "long" && durationMinutes <= 4) return false;
-      }
+        // Duration filter (in minutes)
+        if (selectedDuration !== "all") {
+          const durationMinutes = level.durationMs / 60000;
+          if (selectedDuration === "short" && durationMinutes > 3) return false;
+          if (selectedDuration === "medium" && (durationMinutes <= 2 || durationMinutes > 5)) return false;
+          if (selectedDuration === "long" && durationMinutes <= 4) return false;
+        }
 
-      // Search query filter
-      if (
-        searchQuery &&
-        !level.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !level.artist.toLowerCase().includes(searchQuery.toLowerCase())
-      ) {
-        return false;
-      }
+        // Search query filter
+        if (searchQuery.trim()) {
+          const query = searchQuery.toLowerCase();
+          const titleMatch = level.title.toLowerCase().includes(query);
+          const artistMatch = (level.artist ?? "").toLowerCase().includes(query);
+          if (!titleMatch && !artistMatch) {
+            return false;
+          }
+        }
 
-      return true;
-    });
+        return true;
+      });
   }, [selectedDifficulty, selectedGenre, selectedDuration, searchQuery]);
 
-  const getDifficultyStars = (difficulty: string) => {
+  const getDifficultyStars = (difficulty: "easy" | "medium" | "hard"): string => {
     switch (difficulty) {
       case "easy":
         return "⭐";
@@ -70,7 +87,7 @@ export default function Home() {
     }
   };
 
-  const getDifficultyColor = (difficulty: string) => {
+  const getDifficultyColor = (difficulty: "easy" | "medium" | "hard"): string => {
     switch (difficulty) {
       case "easy":
         return "from-green-500/10 to-green-600/5 border-green-500/30";
@@ -79,14 +96,30 @@ export default function Home() {
       case "hard":
         return "from-red-500/10 to-red-600/5 border-red-500/30";
       default:
-        return "";
+        return "from-zinc-500/10 to-zinc-600/5 border-zinc-500/30";
     }
   };
 
-  const formatDuration = (ms: number) => {
+  const formatDuration = (ms: number): string => {
     const minutes = Math.floor(ms / 60000);
     const seconds = Math.floor((ms % 60000) / 1000);
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
+
+  const handleResetFilters = (): void => {
+    setSelectedDifficulty("all");
+    setSelectedGenre("all");
+    setSelectedDuration("all");
+    setSearchQuery("");
+  };
+
+  const isFiltered = (): boolean => {
+    return (
+      selectedDifficulty !== "all" ||
+      selectedGenre !== "all" ||
+      selectedDuration !== "all" ||
+      searchQuery.trim().length > 0
+    );
   };
 
   return (
@@ -101,9 +134,9 @@ export default function Home() {
                 Leaderboard
               </Button>
             </Link>
-            <Link href="/lobby">
+            <Link href="/login">
               <Button variant="ghost" size="sm">
-                Multiplayer
+                Login
               </Button>
             </Link>
             <Link href="/game/1">
@@ -143,6 +176,7 @@ export default function Home() {
               Difficulty
             </label>
             <select
+              aria-label="Filter songs by difficulty level"
               value={selectedDifficulty}
               onChange={(e) => setSelectedDifficulty(e.target.value)}
               className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
@@ -160,6 +194,7 @@ export default function Home() {
               Genre
             </label>
             <select
+              aria-label="Filter songs by genre or category"
               value={selectedGenre}
               onChange={(e) => setSelectedGenre(e.target.value)}
               className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
@@ -179,6 +214,7 @@ export default function Home() {
               Duration
             </label>
             <select
+              aria-label="Filter songs by duration"
               value={selectedDuration}
               onChange={(e) => setSelectedDuration(e.target.value)}
               className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
@@ -202,17 +238,9 @@ export default function Home() {
 
         {/* Reset Filters Button */}
         <div className="mb-8">
-          {(selectedDifficulty !== "all" ||
-            selectedGenre !== "all" ||
-            selectedDuration !== "all" ||
-            searchQuery) && (
+          {isFiltered() && (
             <button
-              onClick={() => {
-                setSelectedDifficulty("all");
-                setSelectedGenre("all");
-                setSelectedDuration("all");
-                setSearchQuery("");
-              }}
+              onClick={handleResetFilters}
               className="text-emerald-400 hover:text-emerald-300 text-sm font-semibold underline"
             >
               Clear all filters
@@ -254,7 +282,7 @@ export default function Home() {
                     <h3 className="text-xl font-bold text-white mb-2 line-clamp-2">
                       {level.title}
                     </h3>
-                    <p className="text-sm text-zinc-400 mb-4">{level.artist}</p>
+                    <p className="text-sm text-zinc-400 mb-4">{level.artist || "Unknown Artist"}</p>
 
                     {/* Stats */}
                     <div className="grid grid-cols-2 gap-3 mb-4">
@@ -292,12 +320,7 @@ export default function Home() {
               No songs match your filters. Try adjusting them!
             </p>
             <button
-              onClick={() => {
-                setSelectedDifficulty("all");
-                setSelectedGenre("all");
-                setSelectedDuration("all");
-                setSearchQuery("");
-              }}
+              onClick={handleResetFilters}
               className="text-emerald-400 hover:text-emerald-300 font-semibold underline"
             >
               Clear all filters
@@ -319,11 +342,11 @@ export default function Home() {
               </div>
             </Link>
 
-            <Link href="/lobby">
+            <Link href="/login">
               <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border border-blue-500/30 hover:border-blue-500/60 rounded-lg p-6 text-center transition-all cursor-pointer hover:shadow-lg hover:shadow-blue-500/20">
-                <div className="text-4xl mb-3">👥</div>
-                <p className="text-white font-semibold">Multiplayer</p>
-                <p className="text-zinc-400 text-sm mt-2">Play with friends</p>
+                <div className="text-4xl mb-3">👤</div>
+                <p className="text-white font-semibold">Login</p>
+                <p className="text-zinc-400 text-sm mt-2">Sign in to your account</p>
               </div>
             </Link>
 
