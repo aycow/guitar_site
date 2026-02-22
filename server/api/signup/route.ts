@@ -1,4 +1,9 @@
-import clientPromise from "@/lib/mongodb";
+// server/api/signup/route.ts
+// NOTE: The canonical signup is app/api/signup/route.ts — this file is kept for
+// reference but is NOT registered as a Next.js API route (it lives under server/, 
+// not app/). If you ever call this directly, make sure it still points to guitar_academy.
+
+import clientPromise from "@/server/db/client";
 import bcrypt from "bcryptjs";
 
 const validateEmail = (email: string): boolean => {
@@ -25,7 +30,7 @@ export async function POST(req: Request) {
 
   if (!validateEmail(email)) {
     return new Response(
-      JSON.stringify({ error: "Email must end with @.com, @.org, or @.net" }),
+      JSON.stringify({ error: "Email must end with .com, .org, or .net" }),
       { status: 400 }
     );
   }
@@ -38,10 +43,13 @@ export async function POST(req: Request) {
   }
 
   const client = await clientPromise;
-  const db = client.db("mydatabase");
+  // ✅ Fixed: was pointing to "mydatabase" — must be "guitar_academy"
+  const db = client.db("guitar_academy");
   const users = db.collection("users");
 
-  const existing = await users.findOne({ $or: [{ email }, { username }] });
+  const existing = await users.findOne({
+    $or: [{ email: email.toLowerCase().trim() }, { username: username.trim() }],
+  });
   if (existing) {
     return new Response(
       JSON.stringify({ error: "Email or username already exists" }),
@@ -52,10 +60,26 @@ export async function POST(req: Request) {
   const hashedPassword = await bcrypt.hash(password, 10);
 
   await users.insertOne({
-    username,
-    email,
+    username: username.trim(),
+    email: email.toLowerCase().trim(),
     password: hashedPassword,
+    bio: "",
+    avatarColor: "#22c55e",
+    avatarUrl: null,
+    favoriteGenre: "",
+    guitarType: "",
+    country: "",
+    isPublic: true,
+    totalScore: 0,
+    totalLevels: 0,
+    bestAccuracy: 0,
+    totalHits: 0,
+    totalMisses: 0,
+    currentStreak: 0,
+    longestStreak: 0,
+    lastPlayedAt: null,
     createdAt: new Date(),
+    updatedAt: new Date(),
   });
 
   return new Response(JSON.stringify({ message: "User created successfully" }), {

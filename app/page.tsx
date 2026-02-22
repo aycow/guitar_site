@@ -19,10 +19,19 @@ interface FilteredLevel extends Level {
 
 function NavAuth() {
   const { data: session, status } = useSession();
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarColor, setAvatarColor] = useState<string>("#22c55e");
 
   useEffect(() => {
-    console.log("[NAV] Session status:", status, session?.user ?? "no user");
-  }, [status, session]);
+    if (status !== "authenticated") return;
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((data) => {
+        setAvatarUrl(data.user?.avatarUrl ?? null);
+        setAvatarColor(data.user?.avatarColor ?? "#22c55e");
+      })
+      .catch(() => {});
+  }, [status]);
 
   if (status === "loading") {
     return (
@@ -33,22 +42,33 @@ function NavAuth() {
   }
 
   if (status === "authenticated" && session?.user) {
+    const initial = (session.user.name ?? session.user.email ?? "?")[0].toUpperCase();
+
     return (
       <div className="flex items-center gap-3">
-        {/* Avatar + username — clicking goes to profile */}
         <Link href="/profile" className="flex items-center gap-2 group">
-          <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-black font-bold text-sm select-none group-hover:bg-emerald-400 transition-colors">
-            {(session.user.name ?? session.user.email ?? "?")[0].toUpperCase()}
+          {/* Avatar */}
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-black font-bold text-sm select-none overflow-hidden flex-shrink-0 transition-opacity group-hover:opacity-80"
+            style={{ background: avatarUrl ? "transparent" : avatarColor }}
+          >
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={initial}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              initial
+            )}
           </div>
           <span className="text-emerald-400 group-hover:text-emerald-300 font-semibold text-sm hidden sm:block font-mono transition-colors">
             {session.user.name ?? session.user.email}
           </span>
         </Link>
 
-        {/* Log out */}
         <button
           onClick={() => {
-            console.log("[NAV] 🔴 Logging out:", session.user.name);
             void signOut({ callbackUrl: "/" });
           }}
           className="text-xs font-semibold text-zinc-400 hover:text-red-400 border border-zinc-700 hover:border-red-800 px-3 py-1.5 rounded-lg transition-colors"
@@ -59,13 +79,10 @@ function NavAuth() {
     );
   }
 
-  // Unauthenticated
   return (
     <div className="flex gap-2">
       <Link href="/login">
-        <Button variant="ghost" size="sm">
-          Login
-        </Button>
+        <Button variant="ghost" size="sm">Login</Button>
       </Link>
       <Link href="/register">
         <Button size="sm">Sign Up</Button>
@@ -168,9 +185,7 @@ export default function Home() {
           <h1 className="text-2xl font-bold text-white font-mono">🎸 GuitarGame</h1>
           <div className="flex items-center gap-2 sm:gap-4">
             <Link href="/leaderboard">
-              <Button variant="ghost" size="sm">
-                Leaderboard
-              </Button>
+              <Button variant="ghost" size="sm">Leaderboard</Button>
             </Link>
             <NavAuth />
           </div>

@@ -89,101 +89,6 @@ const selectStyle: React.CSSProperties = {
   fontFamily: "inherit", fontSize: 13,
 };
 
-// ── Avatar component ──────────────────────────────────────────────────────────
-
-function Avatar({
-  user, size, editing, onUpload, onRemove, uploading,
-}: {
-  user: ProfileUser;
-  size: number;
-  editing: boolean;
-  onUpload?: (file: File) => void;
-  onRemove?: () => void;
-  uploading?: boolean;
-}) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const initial = user.username[0].toUpperCase();
-
-  return (
-    <div style={{ position: "relative", flexShrink: 0 }}>
-      {/* Main avatar */}
-      <div
-        style={{
-          width: size, height: size, borderRadius: "50%",
-          background: user.avatarUrl ? "transparent" : user.avatarColor,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: size * 0.4, fontWeight: 900, color: "#000",
-          boxShadow: `0 0 40px ${user.avatarColor}50`,
-          overflow: "hidden", position: "relative",
-          cursor: editing ? "pointer" : "default",
-          border: editing ? "2px dashed #374151" : "none",
-        }}
-        onClick={() => editing && fileRef.current?.click()}
-        title={editing ? "Click to change photo" : undefined}
-      >
-        {user.avatarUrl ? (
-          <img
-            src={user.avatarUrl}
-            alt={user.username}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        ) : (
-          initial
-        )}
-
-        {/* Hover overlay in edit mode */}
-        {editing && (
-          <div style={{
-            position: "absolute", inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center",
-            opacity: 0, transition: "opacity 0.2s",
-            fontSize: 12, color: "#fff", gap: 4,
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.opacity = "1"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.opacity = "0"; }}
-          >
-            {uploading ? "⏳" : "📷"}
-            <span style={{ fontSize: 10 }}>{uploading ? "Uploading..." : "Change"}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Remove button */}
-      {editing && user.avatarUrl && onRemove && (
-        <button
-          onClick={onRemove}
-          title="Remove photo"
-          style={{
-            position: "absolute", top: -4, right: -4,
-            width: 22, height: 22, borderRadius: "50%",
-            background: "#ef4444", border: "2px solid #0d1117",
-            color: "#fff", fontSize: 12, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            lineHeight: 1,
-          }}
-        >
-          ×
-        </button>
-      )}
-
-      {/* Hidden file input */}
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
-        style={{ display: "none" }}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file && onUpload) onUpload(file);
-          e.target.value = ""; // reset so same file can be re-selected
-        }}
-      />
-    </div>
-  );
-}
-
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function ProfileView({ user, scores, isOwner, onSave, onAvatarChange }: ProfileViewProps) {
@@ -195,21 +100,68 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
   const [draft,      setDraft     ] = useState<Partial<ProfileUser>>({});
   const [localUser,  setLocalUser ] = useState<ProfileUser>(user);
 
+  // Single shared ref for the file input — used by both the avatar click and the button
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const displayed = { ...localUser, ...draft };
 
   const hitRate = localUser.totalHits + localUser.totalMisses > 0
     ? ((localUser.totalHits / (localUser.totalHits + localUser.totalMisses)) * 100).toFixed(1)
     : "—";
-
   const avgScore  = localUser.totalLevels > 0
     ? Math.round(localUser.totalScore / localUser.totalLevels).toLocaleString()
     : "—";
-
   const bestScore = scores.length > 0 ? Math.max(...scores.map((s) => s.score)) : 0;
   const topLevels = [...scores].sort((a, b) => b.score - a.score).slice(0, 3);
 
   const set = (key: keyof ProfileUser, value: unknown) =>
     setDraft((d) => ({ ...d, [key]: value }));
+
+  const triggerFilePicker = () => fileInputRef.current?.click();
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // reset so same file can be re-selected
+    if (!file) return;
+
+    console.log("[AVATAR] Uploading:", file.name, "| type:", file.type, "| size:", file.size);
+    setUploading(true);
+    setUploadMsg("");
+
+    try {
+      const formData = new FormData();
+      formData.append("avatar", file);
+      const res  = await fetch("/api/profile/avatar", { method: "POST", body: formData });
+      const data = await res.json() as { ok?: boolean; avatarUrl?: string; message?: string };
+      if (!res.ok) throw new Error(data.message ?? "Upload failed");
+
+      setLocalUser((u) => ({ ...u, avatarUrl: data.avatarUrl ?? null }));
+      onAvatarChange?.(data.avatarUrl ?? null);
+      setUploadMsg("✅ Photo updated!");
+      console.log("[AVATAR] ✅ Upload success");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      setUploadMsg(`❌ ${msg}`);
+      console.error("[AVATAR] ❌", err);
+    } finally {
+      setUploading(false);
+      setTimeout(() => setUploadMsg(""), 5000);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    setUploading(true);
+    try {
+      await fetch("/api/profile/avatar", { method: "DELETE" });
+      setLocalUser((u) => ({ ...u, avatarUrl: null }));
+      onAvatarChange?.(null);
+      console.log("[AVATAR] ✅ Removed");
+    } catch (err) {
+      console.error("[AVATAR] ❌ Remove failed:", err);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!onSave || Object.keys(draft).length === 0) { setEditing(false); return; }
@@ -228,53 +180,21 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
     }
   };
 
-  const handleAvatarUpload = async (file: File) => {
-    console.log("[AVATAR] Uploading file:", file.name, file.size);
-    setUploading(true);
-    setUploadMsg("");
-
-    try {
-      const formData = new FormData();
-      formData.append("avatar", file);
-
-      const res = await fetch("/api/profile/avatar", { method: "POST", body: formData });
-      const data = await res.json() as { ok?: boolean; avatarUrl?: string; message?: string };
-
-      if (!res.ok) throw new Error(data.message ?? "Upload failed");
-
-      console.log("[AVATAR] ✅ Uploaded successfully");
-      setLocalUser((u) => ({ ...u, avatarUrl: data.avatarUrl ?? null }));
-      onAvatarChange?.(data.avatarUrl ?? null);
-      setUploadMsg("✅ Photo updated!");
-    } catch (err) {
-      console.error("[AVATAR] ❌ Upload error:", err);
-      setUploadMsg("❌ Upload failed — max 2 MB, JPEG/PNG/WebP only");
-    } finally {
-      setUploading(false);
-      setTimeout(() => setUploadMsg(""), 4000);
-    }
-  };
-
-  const handleAvatarRemove = async () => {
-    console.log("[AVATAR] Removing avatar");
-    setUploading(true);
-    try {
-      await fetch("/api/profile/avatar", { method: "DELETE" });
-      setLocalUser((u) => ({ ...u, avatarUrl: null }));
-      onAvatarChange?.(null);
-      console.log("[AVATAR] ✅ Removed");
-    } catch (err) {
-      console.error("[AVATAR] ❌ Remove error:", err);
-    } finally {
-      setUploading(false);
-    }
-  };
-
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "40px 24px", fontFamily: "'Courier New', monospace", color: "#f0f0f0" }}>
 
+      {/* Hidden file input — one single input, referenced by both click targets */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
+
       {/* ── Header Card ── */}
       <div style={{ ...card, marginBottom: 20, position: "relative", overflow: "hidden" }}>
+        {/* Top accent line */}
         <div style={{
           position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
           width: 240, height: 2,
@@ -282,39 +202,95 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
         }} />
 
         <div style={{ display: "flex", alignItems: "flex-start", gap: 28, flexWrap: "wrap" }}>
-          {/* Avatar with upload */}
+
+          {/* ── Avatar column ── */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-            <Avatar
-              user={displayed as ProfileUser}
-              size={96}
-              editing={editing && isOwner}
-              onUpload={handleAvatarUpload}
-              onRemove={handleAvatarRemove}
-              uploading={uploading}
-            />
+            {/* Avatar circle */}
+            <div
+              style={{
+                width: 96, height: 96, borderRadius: "50%",
+                background: displayed.avatarUrl ? "transparent" : displayed.avatarColor,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 40, fontWeight: 900, color: "#000",
+                boxShadow: `0 0 40px ${displayed.avatarColor}50`,
+                overflow: "hidden", position: "relative", flexShrink: 0,
+                cursor: editing ? "pointer" : "default",
+                border: editing ? "2px dashed #374151" : "2px solid transparent",
+                transition: "border-color 0.2s",
+              }}
+              onClick={() => editing && triggerFilePicker()}
+              title={editing ? "Click to change photo" : undefined}
+            >
+              {displayed.avatarUrl ? (
+                <img src={displayed.avatarUrl} alt={localUser.username} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                localUser.username[0].toUpperCase()
+              )}
+
+              {/* Hover overlay (edit mode only) */}
+              {editing && (
+                <div className="avatar-overlay" style={{
+                  position: "absolute", inset: 0,
+                  background: "rgba(0,0,0,0.55)",
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center",
+                  fontSize: 11, color: "#fff", gap: 3,
+                  opacity: 0, transition: "opacity 0.15s",
+                }}>
+                  <span style={{ fontSize: 22 }}>{uploading ? "⏳" : "📷"}</span>
+                  <span>{uploading ? "Uploading..." : "Change"}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Upload / Remove buttons (edit mode) */}
             {editing && (
-              <button
-                onClick={() => document.querySelector<HTMLInputElement>("input[type=file]")?.click()}
-                style={{
-                  background: "transparent", border: "1px solid #374151",
-                  color: "#9ca3af", borderRadius: 6, padding: "4px 10px",
-                  fontSize: 11, cursor: "pointer", fontFamily: "inherit",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                📷 Upload photo
-              </button>
-            )}
-            {uploadMsg && (
-              <div style={{ fontSize: 11, color: uploadMsg.startsWith("✅") ? "#22c55e" : "#ef4444", textAlign: "center", maxWidth: 120 }}>
-                {uploadMsg}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <button
+                  onClick={triggerFilePicker}
+                  disabled={uploading}
+                  style={{
+                    background: "#1f2937", border: "1px solid #374151",
+                    color: "#d1d5db", borderRadius: 6, padding: "5px 12px",
+                    fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                    opacity: uploading ? 0.5 : 1,
+                  }}
+                >
+                  {uploading ? "Uploading..." : "📷 Upload photo"}
+                </button>
+
+                {displayed.avatarUrl && (
+                  <button
+                    onClick={handleAvatarRemove}
+                    disabled={uploading}
+                    style={{
+                      background: "transparent", border: "none",
+                      color: "#6b7280", fontSize: 11, cursor: "pointer",
+                      fontFamily: "inherit", textDecoration: "underline",
+                      opacity: uploading ? 0.5 : 1,
+                    }}
+                  >
+                    Remove photo
+                  </button>
+                )}
+
+                {uploadMsg && (
+                  <div style={{
+                    fontSize: 11, textAlign: "center", maxWidth: 120,
+                    color: uploadMsg.startsWith("✅") ? "#22c55e" : "#ef4444",
+                  }}>
+                    {uploadMsg}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Color picker (only when no custom photo) */}
+            {/* Color swatches (only when no custom photo) */}
             {editing && !displayed.avatarUrl && (
               <div>
-                <div style={{ fontSize: 9, color: "#4b5563", letterSpacing: 2, marginBottom: 4, textAlign: "center" }}>COLOR</div>
+                <div style={{ fontSize: 9, color: "#4b5563", letterSpacing: 2, marginBottom: 4, textAlign: "center" }}>
+                  OR PICK COLOR
+                </div>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap", width: 104 }}>
                   {COLORS.map((c) => (
                     <div
@@ -331,14 +307,13 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
             )}
           </div>
 
-          {/* Info */}
+          {/* ── Info column ── */}
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontSize: 10, color: "#4b5563", letterSpacing: 3, marginBottom: 4 }}>
               {isOwner ? "YOUR PROFILE" : "PLAYER"}
             </div>
             <div style={{ fontSize: 30, fontWeight: 700, marginBottom: 6 }}>{localUser.username}</div>
 
-            {/* Bio */}
             {editing ? (
               <textarea
                 value={(displayed.bio as string) ?? ""}
@@ -359,7 +334,6 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
               </div>
             )}
 
-            {/* Tags */}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
               {displayed.guitarType && (
                 <span style={{ background: "#1f2937", borderRadius: 20, padding: "4px 12px", fontSize: 12, color: "#9ca3af" }}>
@@ -382,7 +356,7 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
             </div>
           </div>
 
-          {/* Edit / Save buttons */}
+          {/* ── Edit / Save buttons ── */}
           {isOwner && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
               {!editing ? (
@@ -412,8 +386,8 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
                     onClick={handleSave}
                     disabled={saving}
                     style={{
-                      background: "#22c55e", border: "none",
-                      color: "#000", borderRadius: 8, padding: "8px 18px",
+                      background: "#22c55e", border: "none", color: "#000",
+                      borderRadius: 8, padding: "8px 18px",
                       cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 700,
                     }}
                   >
@@ -426,7 +400,7 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
           )}
         </div>
 
-        {/* Edit fields row */}
+        {/* ── Edit fields ── */}
         {editing && (
           <div style={{
             marginTop: 24, paddingTop: 24, borderTop: "1px solid #1f2937",
@@ -462,17 +436,20 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
                   onClick={() => set("isPublic", !displayed.isPublic)}
                   style={{
                     width: 44, height: 24, borderRadius: 12,
-                    background: displayed.isPublic ? "#22c55e" : "#374151",
+                    background: displayed.isPublic !== false ? "#22c55e" : "#374151",
                     position: "relative", cursor: "pointer", transition: "background 0.2s",
                   }}
                 >
                   <div style={{
-                    position: "absolute", top: 3, left: displayed.isPublic ? 23 : 3,
+                    position: "absolute", top: 3,
+                    left: displayed.isPublic !== false ? 23 : 3,
                     width: 18, height: 18, borderRadius: "50%", background: "#fff",
                     transition: "left 0.2s",
                   }} />
                 </div>
-                <span style={{ fontSize: 13, color: "#9ca3af" }}>{displayed.isPublic ? "Public" : "Private"}</span>
+                <span style={{ fontSize: 13, color: "#9ca3af" }}>
+                  {displayed.isPublic !== false ? "Public" : "Private"}
+                </span>
               </div>
             </div>
           </div>
@@ -497,10 +474,10 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
       {/* ── Stats Row 2 ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
         {[
-          { label: "BEST ACCURACY",    value: `${localUser.bestAccuracy.toFixed(1)}%`, color: "#22c55e" },
-          { label: "OVERALL HIT RATE", value: hitRate !== "—" ? `${hitRate}%` : "—",   color: "#60a5fa" },
-          { label: "CURRENT STREAK",   value: `${localUser.currentStreak}d 🔥`,         color: "#f97316" },
-          { label: "LONGEST STREAK",   value: `${localUser.longestStreak}d`,            color: "#9ca3af" },
+          { label: "BEST ACCURACY",    value: `${localUser.bestAccuracy.toFixed(1)}%`,       color: "#22c55e" },
+          { label: "OVERALL HIT RATE", value: hitRate !== "—" ? `${hitRate}%` : "—",          color: "#60a5fa" },
+          { label: "CURRENT STREAK",   value: `${localUser.currentStreak}d 🔥`,               color: "#f97316" },
+          { label: "LONGEST STREAK",   value: `${localUser.longestStreak}d`,                  color: "#9ca3af" },
         ].map(({ label: l, value, color }) => (
           <div key={l} style={card}>
             <div style={labelStyle}>{l}</div>
@@ -522,7 +499,7 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
             <div style={{ width: `${hitRate}%`, background: "linear-gradient(90deg, #22c55e, #16a34a)" }} />
             <div style={{ flex: 1, background: "#7f1d1d" }} />
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 11, color: "#6b7280" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 11 }}>
             <span style={{ color: "#22c55e" }}>{hitRate}% hits</span>
             <span style={{ color: "#ef4444" }}>{(100 - Number(hitRate)).toFixed(1)}% misses</span>
           </div>
@@ -541,9 +518,7 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
                   display: "flex", alignItems: "center", gap: 16,
                   background: "#111827", borderRadius: 8, padding: "12px 16px",
                 }}>
-                  <span style={{ fontSize: 22, width: 32, textAlign: "center" }}>
-                    {["🥇", "🥈", "🥉"][i]}
-                  </span>
+                  <span style={{ fontSize: 22, width: 32, textAlign: "center" }}>{["🥇","🥈","🥉"][i]}</span>
                   <Link href={`/game/${s.levelId}`} style={{ flex: 1, color: "#f0f0f0", textDecoration: "none", fontWeight: 600 }}>
                     {s.levelId}
                   </Link>
@@ -625,6 +600,11 @@ export default function ProfileView({ user, scores, isOwner, onSave, onAvatarCha
           </>
         )}
       </div>
+
+      {/* Hover overlay style */}
+      <style>{`
+        div[title="Click to change photo"]:hover .avatar-overlay { opacity: 1 !important; }
+      `}</style>
     </div>
   );
 }

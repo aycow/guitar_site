@@ -5,28 +5,46 @@ import clientPromise from "@/server/db/client";
 
 export async function GET(
   _req: Request,
-  { params }: { params: { username: string } }
+  { params }: { params: Promise<{ username: string }> }
 ) {
-  const { username } = params;
-  console.log("[PROFILE/username] GET called for:", username);
+  const { username } = await params;
+  const decoded = decodeURIComponent(username).trim();
+  console.log("[PROFILE/username] GET called for:", decoded);
 
   try {
     const client = await clientPromise;
     const db = client.db("guitar_academy");
 
-    const user = await db.collection("users").findOne(
-      { username },
-      { projection: { password: 0, email: 0 } } // never expose password or email publicly
+    // Exact match first, then case-insensitive fallback
+    let user = await db.collection("users").findOne(
+      { username: decoded },
+      { projection: { password: 0, email: 0 } }
     );
 
     if (!user) {
-      console.warn("[PROFILE/username] ❌ User not found:", username);
+      user = await db.collection("users").findOne(
+        {
+          username: {
+            $regex: `^${decoded.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+            $options: "i",
+          },
+        },
+        { projection: { password: 0, email: 0 } }
+      );
+    }
+
+    if (!user) {
+      console.warn("[PROFILE/username] ❌ User not found:", decoded);
       return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
 
+    // Only block if explicitly set to false — treat undefined/null as public
     if (user.isPublic === false) {
-      console.warn("[PROFILE/username] 🔒 Profile is private:", username);
-      return NextResponse.json({ message: "This profile is private" }, { status: 403 });
+      console.warn("[PROFILE/username] 🔒 Profile is private:", decoded);
+      return NextResponse.json(
+        { message: "This profile is private" },
+        { status: 403 }
+      );
     }
 
     const scores = await db
@@ -36,7 +54,12 @@ export async function GET(
       .limit(50)
       .toArray();
 
-    console.log("[PROFILE/username] ✅ Public profile loaded:", username, "| scores:", scores.length);
+    console.log(
+      "[PROFILE/username] ✅ Public profile loaded:",
+      user.username,
+      "| scores:",
+      scores.length
+    );
 
     return NextResponse.json({
       user: {
@@ -70,6 +93,9 @@ export async function GET(
     });
   } catch (error) {
     console.error("[PROFILE/username] ❌ Error:", error);
-    return NextResponse.json({ message: "Failed to fetch profile" }, { status: 500 });
+    return NextResponse.json(
+      { message: "Failed to fetch profile" },
+      { status: 500 }
+    );
   }
 }

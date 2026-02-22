@@ -48,6 +48,8 @@ export interface LeaderboardEntry {
   rank: number;
   userId: string;
   playerName: string;
+  avatarColor?: string;
+  avatarUrl?: string | null;
   score: number;
   accuracy: number;
   hits: number;
