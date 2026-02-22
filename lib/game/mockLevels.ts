@@ -141,4 +141,20 @@ export const mockLevels: Level[] = [
       { id: "2", targetHz: 277, startMs: 500, durationMs: 500 },
     ],
   },
+  {
+    id: "g_scale",
+    title: "G Scale",
+    artist: "GuitarSite",
+    bpm: 90,
+    difficulty: "easy",
+    category: "scales",
+    durationMs: 15000,
+    albumCover: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=300&h=300&fit=crop",
+    notes: [
+      { id: "1", targetHz: 196, startMs: 0, durationMs: 250 },
+      { id: "2", targetHz: 220, startMs: 250, durationMs: 250 },
+      { id: "3", targetHz: 246.94, startMs: 500, durationMs: 250 },
+      { id: "4", targetHz: 261.63, startMs: 750, durationMs: 250 },
+    ],
+  },
 ];

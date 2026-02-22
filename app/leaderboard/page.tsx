@@ -43,12 +43,12 @@ export default function LeaderboardPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-zinc-900 via-zinc-800 to-black">
+    <main className="min-h-screen" style={{ background: "rgba(0,0,0,0.92)", backdropFilter: "blur(8px)", fontFamily: "'Courier New', monospace", color: "#f0f0f0" }}>
       {/* Navigation Bar */}
-      <nav className="border-b border-zinc-700 bg-zinc-950/50 backdrop-blur-sm">
+      <nav className="border-b border-[#1f2937] bg-[#0d1117]/80 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
           <Link href="/">
-            <h1 className="text-2xl font-bold text-white hover:text-zinc-300 cursor-pointer">
+            <h1 className="text-2xl font-bold text-white hover:text-zinc-300 cursor-pointer font-mono">
               🎸 GuitarGame
             </h1>
           </Link>
@@ -67,7 +67,7 @@ export default function LeaderboardPage() {
       <div className="mx-auto max-w-7xl px-6 py-12">
         {/* Header */}
         <div className="mb-12">
-          <h2 className="text-4xl font-bold text-white mb-4">🏆 Global Leaderboard</h2>
+          <h2 className="text-4xl font-bold text-white mb-4 font-mono tracking-wide">🏆 Global Leaderboard</h2>
           <p className="text-xl text-zinc-300 mb-8">
             Compete with musicians worldwide. Top performers are ranked by score and accuracy.
           </p>
@@ -83,7 +83,7 @@ export default function LeaderboardPage() {
                 placeholder="Level ID (leave empty for all)"
                 value={levelFilter}
                 onChange={(e) => setLevelFilter(e.target.value)}
-                className="bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+                className="bg-[#0b1114] border border-[#1f2937] rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
               />
             </div>
             <div className="flex items-end">

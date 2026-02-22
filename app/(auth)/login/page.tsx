@@ -94,6 +94,7 @@ export default function LoginPage() {
   };
 
   return (
+<<<<<<< HEAD
     <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-gray-900 to-gray-950">
       <h1 className="text-6xl font-bold text-white select-none mb-8 text-center">
         Welcome to Guitar Site
@@ -136,15 +137,30 @@ export default function LoginPage() {
             className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-400 text-black bg-white disabled:opacity-50"
           />
         )}
+=======
+    <main className="flex min-h-screen flex-col items-center justify-center" style={{ background: "rgba(0,0,0,0.92)", backdropFilter: "blur(8px)", fontFamily: "'Courier New', monospace", color: "#f0f0f0" }}>
+      <h1 className="text-6xl font-bold select-none mb-8 text-center font-mono tracking-wide">
+        Welcome Back
+      </h1>
+
+      <p className="text-zinc-300 mb-8 text-center">
+        Log in to continue your guitar learning journey
+      </p>
+>>>>>>> fc09b11d3abfb46754377a92bc4af87799bc2fd6
 
         <input
           type="email"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+<<<<<<< HEAD
           onKeyPress={handleKeyPress}
           disabled={isLoading}
           className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-400 text-black bg-white disabled:opacity-50"
+=======
+          disabled={loading}
+          className="w-72 px-4 py-2 rounded-lg border border-[#1f2937] focus:outline-none focus:ring-2 focus:ring-emerald-500 text-white bg-[#061014] disabled:opacity-50"
+>>>>>>> fc09b11d3abfb46754377a92bc4af87799bc2fd6
         />
 
         <input
@@ -152,9 +168,14 @@ export default function LoginPage() {
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+<<<<<<< HEAD
           onKeyPress={handleKeyPress}
           disabled={isLoading}
           className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-red-400 text-black bg-white disabled:opacity-50"
+=======
+          disabled={loading}
+          className="w-72 px-4 py-2 rounded-lg border border-[#1f2937] focus:outline-none focus:ring-2 focus:ring-emerald-500 text-white bg-[#061014] disabled:opacity-50"
+>>>>>>> fc09b11d3abfb46754377a92bc4af87799bc2fd6
         />
 
         {action === "Sign Up" && (
@@ -170,9 +191,13 @@ export default function LoginPage() {
         )}
 
         {errorMessage && (
+<<<<<<< HEAD
           <p className="text-sm text-red-400 font-semibold text-center mt-2">
             {errorMessage}
           </p>
+=======
+          <p className="text-sm text-amber-400 font-semibold text-center">{errorMessage}</p>
+>>>>>>> fc09b11d3abfb46754377a92bc4af87799bc2fd6
         )}
       </div>
 
@@ -185,6 +210,16 @@ export default function LoginPage() {
         >
           {isLoading ? "Loading..." : action}
         </button>
+<<<<<<< HEAD
+=======
+
+        <p className="text-zinc-300 text-sm">
+          Don't have an account?{" "}
+          <Link href="/register" className="text-amber-400 hover:text-amber-300 font-semibold">
+            Create one
+          </Link>
+        </p>
+>>>>>>> fc09b11d3abfb46754377a92bc4af87799bc2fd6
       </div>
 
       {action === "Log In" && (
