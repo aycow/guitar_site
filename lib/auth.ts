@@ -1,30 +1,19 @@
+// lib/auth.ts
+
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { Session } from "next-auth";
+import { authOptions } from "@/lib/auth.config";
+import type { Session } from "next-auth";
 
 export async function getAuthSession(): Promise<Session | null> {
-  try {
-    const session = await getServerSession(authOptions);
-    return session || null;
-  } catch (error) {
-    console.error("Error getting auth session:", error);
-    return null;
+  console.log("[AUTH] getAuthSession() called");
+  const session = await getServerSession(authOptions);
+  if (session?.user) {
+    console.log("[AUTH] ✅ Server session found for:", session.user.name);
+  } else {
+    console.log("[AUTH] 🔒 No server session");
   }
+  return session;
 }
 
-export async function getCurrentUser() {
-  const session = await getAuthSession();
-  if (!session?.user) {
-    return null;
-  }
-  return {
-    id: session.user.id || "",
-    email: session.user.email || "",
-    name: session.user.name || "",
-  };
-}
-
-export async function isAuthenticated(): Promise<boolean> {
-  const session = await getAuthSession();
-  return !!session?.user;
-}
+// Re-export authOptions so anything that previously imported from here still works
+export { authOptions };

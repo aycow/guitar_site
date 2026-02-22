@@ -12,7 +12,7 @@ export async function GET() {
 
     console.log("\n2️⃣ Selecting database...");
     const db = client.db("guitar-game");
-    console.log("✅ Database selected: guitar_academy");
+    console.log("✅ Database selected: guitar-game");
 
     console.log("\n3️⃣ Accessing collections...");
     const users = db.collection("users");
@@ -35,7 +35,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       message: "MongoDB is connected and working!",
-      database: "guitar_academy",
+      database: "guitar-game",
       collections: {
         users: userCount,
         scores: scoreCount,
