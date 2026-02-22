@@ -43,3 +43,25 @@ export interface GetLevelResponse {
     durationMs: number;
   }>;
 }
+
+export interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  playerName: string;
+  score: number;
+  accuracy: number;
+  hits: number;
+  misses: number;
+  levelId: string;
+  createdAt: string;
+}
+
+export interface GetLeaderboardResponse {
+  entries: LeaderboardEntry[];
+  totalPlayers: number;
+}
+
+export interface GetLeaderboardRequest {
+  levelId?: string;
+  limit?: number;
+}
