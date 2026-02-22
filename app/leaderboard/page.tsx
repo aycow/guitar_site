@@ -121,7 +121,7 @@ export default function LeaderboardPage() {
                       Player Name
                     </th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-zinc-300">
-                      Score
+                      Best Score
                     </th>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-zinc-300">
                       Accuracy

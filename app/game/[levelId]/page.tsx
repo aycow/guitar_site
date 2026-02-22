@@ -128,6 +128,13 @@ function getGrade(accuracy: number): { letter: string; color: string; glow: stri
   return { letter: "D", color: "#ef4444", glow: "#ef4444" };
 }
 
+function formatTime(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 // ─── Results Screen ───────────────────────────────────────────────────────────
 
 function ResultsScreen({
@@ -531,7 +538,7 @@ function MeasurePreview({
       </div>
 
       <div style={{ fontSize: 11, color: "#4b5563", marginTop: 8 }}>
-        Tip: if the grid feels “off”, make sure your chart JSON has a reasonable <code>bpmHint</code>.
+        Tip: if the grid feels "off", make sure your chart JSON has a reasonable <code>bpmHint</code>.
       </div>
     </div>
   );
@@ -590,7 +597,7 @@ export function StaffPreview({
 
   const startMeasureIndex = currentMeasureIndex;
 
-  // Playhead positioning: we’ll compute slot X positions from the rendered notes (first measure only).
+  // Playhead positioning: we'll compute slot X positions from the rendered notes (first measure only).
   const slotXsRef = useRef<number[] | null>(null);
   const [playheadX, setPlayheadX] = useState<number | null>(null);
 
@@ -777,7 +784,7 @@ export function StaffPreview({
       </div>
 
       <div style={{ fontSize: 11, color: "#4b5563", marginTop: 8 }}>
-        Readability requires quantization. If this looks “off-beat”, your <code>bpmHint</code> (or chart timings) don’t match the audio.
+        Readability requires quantization. If this looks "off-beat", your <code>bpmHint</code> (or chart timings) don't match the audio.
       </div>
     </div>
   );
@@ -792,6 +799,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   const [isPlaying,    setIsPlaying   ] = useState(false);
   const [micReady,     setMicReady    ] = useState(false);
   const [songTimeMs,   setSongTimeMs  ] = useState(0);
+  const [songDurationMs, setSongDurationMs] = useState(0);
   const [score,        setScore       ] = useState(0);
   const [combo,        setCombo       ] = useState(0);
   const [maxCombo,     setMaxCombo    ] = useState(0);
@@ -802,9 +810,12 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [inputLatencyMs, setInputLatencyMs] = useState(0);
   const [pitchHistoryCount, setPitchHistoryCount] = useState(0);
-  // NEW: game over state
   const [gameOver,     setGameOver    ] = useState(false);
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
+  // ── NEW: volume state ──
+  const [volume,       setVolume      ] = useState(1);
+  const [isMuted,      setIsMuted     ] = useState(false);
+  const prevVolumeRef = useRef(1); // remember volume before mute
 
   const audioRef         = useRef<HTMLAudioElement | null>(null);
   const rafRef           = useRef<number | null>(null);
@@ -829,6 +840,13 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
 
   const inputLatencyMsRef = useRef(inputLatencyMs);
   useEffect(() => { inputLatencyMsRef.current = inputLatencyMs; }, [inputLatencyMs]);
+
+  // ── Sync volume to audio element ──
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    a.volume = isMuted ? 0 : volume;
+  }, [volume, isMuted]);
 
   // ── Load chart ──
   useEffect(() => {
@@ -951,6 +969,10 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
         if (now - lastUiUpdateRef.current >= UI_POLL_MS) {
           lastUiUpdateRef.current = now;
           setSongTimeMs(tGameMs);
+          // Update duration if not yet set
+          if (audio.duration && isFinite(audio.duration)) {
+            setSongDurationMs(audio.duration * 1000);
+          }
         }
 
         let hz: number | null = null;
@@ -1096,7 +1118,13 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     if (!a) {
       a = new Audio(chart.audioUrl);
       a.preload = "auto";
+      a.volume = isMuted ? 0 : volume;
       audioRef.current = a;
+
+      // Capture duration once metadata is loaded
+      a.addEventListener("loadedmetadata", () => {
+        if (isFinite(a!.duration)) setSongDurationMs(a!.duration * 1000);
+      });
 
       // Attach ended listener on first creation
       const handleEnded = () => {
@@ -1119,6 +1147,40 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     }
     if (!isPlaying) { await a.play().catch(console.error); setIsPlaying(true); }
     else { a.pause(); setIsPlaying(false); }
+  };
+
+  // ── Seek (progress bar click) ──
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const a = audioRef.current;
+    if (!a || !songDurationMs) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const newTimeS = (pct * songDurationMs) / 1000;
+    a.currentTime = newTimeS;
+    setSongTimeMs(pct * songDurationMs);
+    // Reset scoring window so notes near the seek point are re-evaluated
+    const newTimeMs = pct * songDurationMs;
+    nextIdxRef.current = chart?.events.findIndex((ev) => !ev._scored && ev.timeMs >= newTimeMs - HIT_WINDOW_MS) ?? 0;
+    if (nextIdxRef.current < 0) nextIdxRef.current = chart?.events.length ?? 0;
+  };
+
+  // ── Toggle mute ──
+  const toggleMute = () => {
+    if (isMuted) {
+      setIsMuted(false);
+      setVolume(prevVolumeRef.current || 0.5);
+    } else {
+      prevVolumeRef.current = volume;
+      setIsMuted(true);
+    }
+  };
+
+  // ── Volume icon helper ──
+  const volumeIcon = () => {
+    if (isMuted || volume === 0) return "🔇";
+    if (volume < 0.4) return "🔈";
+    if (volume < 0.75) return "🔉";
+    return "🔊";
   };
 
   // ── Restart ──
@@ -1147,6 +1209,8 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     if (!chart) return null;
     return chart.events.find((e) => !e._scored && e.timeMs >= songTimeMs) ?? null;
   }, [chart, songTimeMs]);
+
+  const progressPct = songDurationMs > 0 ? Math.min(100, (songTimeMs / songDurationMs) * 100) : 0;
 
   if (!chart) return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#0a0a0f", color:"#fff", fontFamily:"monospace" }}>
@@ -1187,6 +1251,50 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
       <div style={{ display:"flex", alignItems:"baseline", gap:16, marginBottom:24 }}>
         <h1 style={{ fontSize:28, fontWeight:700, margin:0, letterSpacing:2, textTransform:"uppercase" }}>{chart.title}</h1>
         {chart.bpmHint && <span style={{ fontSize:13, color:"#666", letterSpacing:1 }}>{Math.round(chart.bpmHint)} BPM</span>}
+      </div>
+
+      {/* ── Song progress bar ── */}
+      <div style={{ marginBottom: 20 }}>
+        <div
+          onClick={handleSeek}
+          title="Click to seek"
+          style={{
+            position: "relative",
+            height: 10,
+            background: "#1f2937",
+            borderRadius: 99,
+            cursor: "pointer",
+            overflow: "hidden",
+          }}
+        >
+          {/* filled portion */}
+          <div style={{
+            position: "absolute",
+            left: 0, top: 0, bottom: 0,
+            width: `${progressPct}%`,
+            background: "linear-gradient(90deg, #3b82f6, #60a5fa)",
+            borderRadius: 99,
+            transition: "width 0.1s linear",
+          }} />
+          {/* glowing head */}
+          <div style={{
+            position: "absolute",
+            top: "50%",
+            left: `${progressPct}%`,
+            transform: "translate(-50%, -50%)",
+            width: 14,
+            height: 14,
+            background: "#fff",
+            borderRadius: "50%",
+            boxShadow: "0 0 8px #60a5fa, 0 0 20px #3b82f680",
+            transition: "left 0.1s linear",
+          }} />
+        </div>
+        {/* time labels */}
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 11, color: "#4b5563" }}>
+          <span>{formatTime(songTimeMs)}</span>
+          <span>{songDurationMs > 0 ? formatTime(songDurationMs) : "--:--"}</span>
+        </div>
       </div>
 
       {/* Score cards */}
@@ -1237,6 +1345,44 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
         {micReady  && <button onClick={stopMic}              style={btnStyle("#ef4444")}>⏹ Stop Input</button>}
         <button onClick={toggle}  style={btnStyle(isPlaying ? "#f59e0b" : "#22c55e")}>{isPlaying ? "⏸ Pause" : "▶ Play"}</button>
         <button onClick={restart} style={btnStyle("#6b7280")}>↺ Restart</button>
+
+        {/* ── Volume control ── */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          background: "#111827", border: "1px solid #1f2937",
+          borderRadius: 8, padding: "8px 14px",
+        }}>
+          <button
+            onClick={toggleMute}
+            title={isMuted ? "Unmute" : "Mute"}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              fontSize: 18, lineHeight: 1, padding: 0,
+              color: "#f0f0f0",
+            }}
+          >
+            {volumeIcon()}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.02}
+            value={isMuted ? 0 : volume}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setVolume(v);
+              setIsMuted(v === 0);
+              if (v > 0) prevVolumeRef.current = v;
+              const a = audioRef.current;
+              if (a) a.volume = v;
+            }}
+            style={{ width: 80, accentColor: "#60a5fa", cursor: "pointer" }}
+          />
+          <span style={{ fontSize: 11, color: "#4b5563", minWidth: 30, textAlign: "right" }}>
+            {isMuted ? "0%" : `${Math.round(volume * 100)}%`}
+          </span>
+        </div>
 
         <div style={{ display:"flex", alignItems:"center", gap:8, background:"#111827", border:"1px solid #1f2937", borderRadius:8, padding:"8px 14px", fontSize:13 }}>
           <div style={{ width:8, height:8, borderRadius:"50%", background:micReady ? "#22c55e" : "#374151", boxShadow:micReady ? "0 0 8px #22c55e" : "none" }} />
