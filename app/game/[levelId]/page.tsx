@@ -2,6 +2,7 @@
 "use client";
 
 import React, { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,13 +33,13 @@ type ScoredNote = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const HIT_WINDOW_MS        = 150;   // ±150 ms timing window
-const SUSTAIN_EXTEND_MS    = 0;     // extra ms past durationMs where a hit still counts
-const PITCH_TOLERANCE_CENTS = 100;  // ±100 cents
-const MIN_RMS              = 0.012; // silence gate
-const PITCH_HISTORY_SIZE   = 7;     // median filter length
-const PITCH_POLL_MS        = 33;    // ~30 Hz pitch detection rate (not every frame)
-const UI_POLL_MS           = 50;    // ~20 Hz UI update rate
+const HIT_WINDOW_MS        = 150;
+const SUSTAIN_EXTEND_MS    = 0;
+const PITCH_TOLERANCE_CENTS = 100;
+const MIN_RMS              = 0.012;
+const PITCH_HISTORY_SIZE   = 7;
+const PITCH_POLL_MS        = 33;
+const UI_POLL_MS           = 50;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -51,15 +52,12 @@ function midiToName(m: number) {
   return `${names[m % 12]}${Math.floor(m / 12) - 1}`;
 }
 
-// Wrap cents into [-600, +600] so octave wrapping is handled cleanly
 function centsDistance(hzA: number, hzB: number) {
   const cents = 1200 * Math.log2(hzA / hzB);
   const wrapped = ((cents + 600) % 1200) - 600;
   return Math.abs(wrapped);
 }
 
-// Try detected pitch AND common harmonic candidates (÷2, ÷3, ÷4, ×2)
-// Bass detectors often lock to 2nd/3rd harmonic instead of fundamental
 function pitchMatchesRobust(hzDetected: number, hzExpected: number, tolCents: number) {
   const candidates = [
     hzDetected,
@@ -78,14 +76,12 @@ function getRms(buf: Float32Array<ArrayBuffer>) {
   return Math.sqrt(s / buf.length);
 }
 
-// Median of a small array without mutating it
 function median(arr: number[]): number {
   const s = [...arr].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
   return s.length % 2 !== 0 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
-// Normalised autocorrelation — tuned for bass (35–1200 Hz)
 function autoCorrelate(buf: Float32Array<ArrayBuffer>, sampleRate: number): number | null {
   if (getRms(buf) < MIN_RMS) return null;
 
@@ -94,7 +90,7 @@ function autoCorrelate(buf: Float32Array<ArrayBuffer>, sampleRate: number): numb
   mean /= buf.length;
 
   const SIZE = buf.length;
-  const maxLag = Math.floor(sampleRate / 35);   // ~35 Hz floor (5-string low B ≈ 31 Hz)
+  const maxLag = Math.floor(sampleRate / 35);
   const minLag = Math.floor(sampleRate / 1200);
 
   let bestLag = -1, bestCorr = 0;
@@ -123,6 +119,184 @@ function btnStyle(bg: string): React.CSSProperties {
   };
 }
 
+function getGrade(accuracy: number): { letter: string; color: string; glow: string } {
+  if (accuracy === 100) return { letter: "S", color: "#facc15", glow: "#facc15" };
+  if (accuracy >= 90)  return { letter: "A", color: "#22c55e", glow: "#22c55e" };
+  if (accuracy >= 75)  return { letter: "B", color: "#60a5fa", glow: "#60a5fa" };
+  if (accuracy >= 60)  return { letter: "C", color: "#f97316", glow: "#f97316" };
+  return { letter: "D", color: "#ef4444", glow: "#ef4444" };
+}
+
+// ─── Results Screen ───────────────────────────────────────────────────────────
+
+function ResultsScreen({
+  chart,
+  score,
+  maxCombo,
+  hits,
+  misses,
+  accuracy,
+  scoredNotes,
+  onRestart,
+}: {
+  chart: Chart;
+  score: number;
+  maxCombo: number;
+  hits: number;
+  misses: number;
+  accuracy: number;
+  scoredNotes: ScoredNote[];
+  onRestart: () => void;
+}) {
+  const grade = getGrade(accuracy);
+  const total = hits + misses;
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0,
+      background: "rgba(0,0,0,0.92)",
+      backdropFilter: "blur(8px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      zIndex: 200,
+      fontFamily: "'Courier New', monospace",
+      animation: "fadeIn 0.2s ease-out",
+    }}>
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        @keyframes gradeAppear { 0% { transform: scale(0.3) rotate(-15deg); opacity: 0; } 70% { transform: scale(1.15) rotate(3deg); } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
+        @keyframes shimmer { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+      `}</style>
+
+      <div style={{
+        background: "#0d1117",
+        border: "1px solid #1f2937",
+        borderRadius: 16,
+        padding: "48px 56px",
+        minWidth: 520,
+        maxWidth: 640,
+        width: "90vw",
+        position: "relative",
+        overflow: "hidden",
+      }}>
+        {/* Glow accent top */}
+        <div style={{
+          position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)",
+          width: 200, height: 2, background: `linear-gradient(90deg, transparent, ${grade.glow}, transparent)`,
+          borderRadius: 2,
+        }} />
+
+        {/* Song name */}
+        <div style={{ fontSize: 11, color: "#4b5563", letterSpacing: 3, marginBottom: 6, textTransform: "uppercase" }}>
+          RESULTS
+        </div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#f0f0f0", marginBottom: 32, letterSpacing: 1 }}>
+          {chart.title}
+        </div>
+
+        {/* Grade + Score row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 32, marginBottom: 36 }}>
+          <div style={{
+            fontSize: 96, fontWeight: 900, lineHeight: 1,
+            color: grade.color,
+            textShadow: `0 0 60px ${grade.glow}80, 0 0 20px ${grade.glow}60`,
+            animation: "gradeAppear 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both",
+          }}>
+            {grade.letter}
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, color: "#6b7280", letterSpacing: 2, marginBottom: 4 }}>FINAL SCORE</div>
+            <div style={{ fontSize: 40, fontWeight: 700, color: "#facc15", letterSpacing: 1 }}>
+              {score.toLocaleString()}
+            </div>
+            <div style={{ fontSize: 12, color: "#4b5563", marginTop: 4 }}>
+              MAX COMBO <span style={{ color: "#60a5fa" }}>×{maxCombo}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Accuracy bar */}
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ fontSize: 11, color: "#6b7280", letterSpacing: 2 }}>ACCURACY</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: grade.color }}>{accuracy}%</span>
+          </div>
+          <div style={{ height: 6, background: "#1f2937", borderRadius: 3, overflow: "hidden" }}>
+            <div style={{
+              height: "100%",
+              width: `${accuracy}%`,
+              background: `linear-gradient(90deg, ${grade.color}80, ${grade.color})`,
+              borderRadius: 3,
+              transition: "width 1s ease-out",
+            }} />
+          </div>
+        </div>
+
+        {/* Stats grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 32 }}>
+          {[
+            { label: "HITS",       value: hits,              color: "#22c55e", bg: "#14532d", border: "#166534" },
+            { label: "MISSES",     value: misses,            color: "#ef4444", bg: "#7f1d1d", border: "#991b1b" },
+            { label: "TOTAL NOTES", value: total,            color: "#f0f0f0", bg: "#111827", border: "#1f2937" },
+            { label: "HIT RATE",   value: `${accuracy}%`,   color: grade.color, bg: "#111827", border: "#1f2937" },
+          ].map(({ label, value, color, bg, border }) => (
+            <div key={label} style={{
+              background: bg, border: `1px solid ${border}`, borderRadius: 8,
+              padding: "12px 16px",
+            }}>
+              <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: 2, marginBottom: 4 }}>{label}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color }}>{value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Note breakdown (last 16) */}
+        {scoredNotes.length > 0 && (
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ fontSize: 10, color: "#4b5563", letterSpacing: 2, marginBottom: 8 }}>NOTE BREAKDOWN</div>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {scoredNotes.map((n, i) => (
+                <div key={i} title={midiToName(n.event.notes[0])} style={{
+                  width: 28, height: 28, borderRadius: 4,
+                  background: n.result === "HIT" ? "#14532d" : "#7f1d1d",
+                  border: `1px solid ${n.result === "HIT" ? "#166534" : "#991b1b"}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 9, fontWeight: 700,
+                  color: n.result === "HIT" ? "#22c55e" : "#ef4444",
+                }}>
+                  {midiToName(n.event.notes[0]).replace(/[0-9]/g, "")}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            onClick={onRestart}
+            style={{
+              ...btnStyle("#22c55e"),
+              flex: 1, fontSize: 16, padding: "14px 0",
+              letterSpacing: 2,
+            }}
+          >
+            ↺ PLAY AGAIN
+          </button>
+          <Link href="/" style={{
+            ...btnStyle("#374151"),
+            flex: 1, fontSize: 14, padding: "14px 0",
+            letterSpacing: 2, textDecoration: "none",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            ← SONG SELECT
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function GamePage({ params }: { params: Promise<{ levelId: string }> }) {
@@ -140,9 +314,10 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   const [feedback,     setFeedback    ] = useState<"HIT" | "MISS" | null>(null);
   const [audioInputs,  setAudioInputs ] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
-  // FIX 6: user-adjustable latency compensation
   const [inputLatencyMs, setInputLatencyMs] = useState(0);
   const [pitchHistoryCount, setPitchHistoryCount] = useState(0);
+  // NEW: game over state
+  const [gameOver,     setGameOver    ] = useState(false);
 
   const audioRef         = useRef<HTMLAudioElement | null>(null);
   const rafRef           = useRef<number | null>(null);
@@ -151,25 +326,18 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   const micCtxRef    = useRef<AudioContext | null>(null);
   const analyserRef  = useRef<AnalyserNode | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
-  // FIX 3: 4096-sample buffer for more stable bass detection
   const micBufRef    = useRef<Float32Array<ArrayBuffer>>(
     new Float32Array(4096) as Float32Array<ArrayBuffer>
   );
 
-  // FIX 3: pitch median filter — last N raw estimates
   const pitchHistoryRef = useRef<number[]>([]);
-
-  // Throttle timers
   const lastPitchPollRef = useRef(0);
   const lastUiUpdateRef  = useRef(0);
 
-  // Mutable score state (no stale closures in RAF)
   const scoreRef    = useRef(0);
   const comboRef    = useRef(0);
   const maxComboRef = useRef(0);
   const scoredRef   = useRef<ScoredNote[]>([]);
-
-  // FIX 4: index pointer — never scan the whole event list every frame
   const nextIdxRef  = useRef(0);
 
   const inputLatencyMsRef = useRef(inputLatencyMs);
@@ -189,7 +357,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     })().catch(console.error);
   }, [levelId]);
 
-  // ── Enumerate audio inputs (no auto getUserMedia — permission denied) ──
+  // ── Enumerate audio inputs ──
   const refreshAudioInputs = useCallback(async () => {
     const all = await navigator.mediaDevices.enumerateDevices();
     const inputs = all.filter((d) => d.kind === "audioinput");
@@ -243,13 +411,11 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
       const ctx    = new AudioContext({ latencyHint: "interactive" });
       const source = ctx.createMediaStreamSource(stream);
 
-      // Highpass at 20 Hz: cuts DC / sub-rumble, doesn't touch bass fundamentals
       const hp = ctx.createBiquadFilter();
       hp.type = "highpass";
       hp.frequency.value = 20;
 
       const analyser = ctx.createAnalyser();
-      // FIX 3: 4096 fftSize → more cycles captured at low frequencies
       analyser.fftSize = 4096;
       analyser.smoothingTimeConstant = 0;
 
@@ -260,12 +426,9 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
       micCtxRef.current    = ctx;
       analyserRef.current  = analyser;
       pitchHistoryRef.current = [];
-
-      // Re-size mic buffer to match fftSize
       micBufRef.current = new Float32Array(analyser.fftSize) as Float32Array<ArrayBuffer>;
 
       setMicReady(true);
-      // Re-enumerate now that permission is granted so labels populate
       await refreshAudioInputs();
     } catch (e) {
       console.error("Mic init failed", e);
@@ -293,26 +456,22 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
       const micCtx   = micCtxRef.current;
 
       if (audio) {
-        // FIX 1 & 2: single clamped game time used for both UI and scoring
         const tRawMs  = audio.currentTime * 1000
                         - (chart.offsetMs ?? 0)
                         - inputLatencyMsRef.current;
         const tGameMs = Math.max(0, tRawMs);
 
-        // FIX 4: throttle UI state updates to ~20 Hz
         if (now - lastUiUpdateRef.current >= UI_POLL_MS) {
           lastUiUpdateRef.current = now;
           setSongTimeMs(tGameMs);
         }
 
-        // FIX 4: throttle pitch detection to ~30 Hz
         let hz: number | null = null;
         if (analyser && micCtx && now - lastPitchPollRef.current >= PITCH_POLL_MS) {
           lastPitchPollRef.current = now;
           analyser.getFloatTimeDomainData(micBufRef.current);
           const raw = autoCorrelate(micBufRef.current, micCtx.sampleRate);
 
-          // FIX 3: median filter — only update history when we get a reading
           if (raw !== null) {
             pitchHistoryRef.current.push(raw);
             if (pitchHistoryRef.current.length > PITCH_HISTORY_SIZE) {
@@ -321,38 +480,26 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
             setPitchHistoryCount(pitchHistoryRef.current.length);
           }
 
-          // Use median of history if we have enough samples, else latest raw
           hz = pitchHistoryRef.current.length >= 3
             ? median(pitchHistoryRef.current)
             : raw;
 
-          if (now - lastUiUpdateRef.current < UI_POLL_MS) {
-            // Only update Hz display alongside UI throttle
-          } else {
-            setDetectedHz(hz);
-          }
           setDetectedHz(hz);
         }
 
-        // FIX 4: index pointer — O(1) instead of scanning all events
         while (nextIdxRef.current < chart.events.length) {
           const ev = chart.events[nextIdxRef.current];
 
           if (ev._scored) { nextIdxRef.current++; continue; }
 
           const diff = tGameMs - ev.timeMs;
-
-          // Too early — stop, nothing after this is ready either
           if (diff < -HIT_WINDOW_MS) break;
 
-          // FIX 6: hit window extended by durationMs for sustained notes
           const hitEnd = HIT_WINDOW_MS + (ev.durationMs ?? 0) + SUSTAIN_EXTEND_MS;
 
           if (diff <= hitEnd) {
-            // Inside window — attempt hit if we have a pitch reading
             if (hz !== null) {
               const expectedHz = midiToHz(ev.notes[0]);
-              // FIX 3: harmonic-tolerant matching (÷2, ÷3, ÷4, ×2)
               if (pitchMatchesRobust(hz, expectedHz, PITCH_TOLERANCE_CENTS)) {
                 ev._scored = true;
                 const pts = 100 * (comboRef.current + 1);
@@ -370,10 +517,9 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
                 continue;
               }
             }
-            break; // still inside window but no hit yet — keep waiting
+            break;
           }
 
-          // Past window — MISS
           ev._scored = true;
           comboRef.current = 0;
           const sn: ScoredNote = { event: ev, result: "MISS" };
@@ -392,11 +538,62 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [chart, showFeedback]);
 
+  // ── Song ended handler ──
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleEnded = () => {
+      setIsPlaying(false);
+      // Mark any remaining unscored notes as MISS
+      if (chart) {
+        chart.events.forEach((ev) => {
+          if (!ev._scored) {
+            ev._scored = true;
+            comboRef.current = 0;
+            const sn: ScoredNote = { event: ev, result: "MISS" };
+            scoredRef.current = [...scoredRef.current, sn];
+          }
+        });
+        setScoredNotes([...scoredRef.current]);
+        setCombo(0);
+      }
+      // Small delay so the last feedback flash can finish
+      setTimeout(() => setGameOver(true), 100);
+    };
+
+    audio.addEventListener("ended", handleEnded);
+    return () => audio.removeEventListener("ended", handleEnded);
+  }, [chart]);
+
   // ── Play / Pause ──
   const toggle = async () => {
     if (!chart) return;
     let a = audioRef.current;
-    if (!a) { a = new Audio(chart.audioUrl); a.preload = "auto"; audioRef.current = a; }
+    if (!a) {
+      a = new Audio(chart.audioUrl);
+      a.preload = "auto";
+      audioRef.current = a;
+
+      // Attach ended listener on first creation
+      const handleEnded = () => {
+        setIsPlaying(false);
+        if (chart) {
+          chart.events.forEach((ev) => {
+            if (!ev._scored) {
+              ev._scored = true;
+              comboRef.current = 0;
+              const sn: ScoredNote = { event: ev, result: "MISS" };
+              scoredRef.current = [...scoredRef.current, sn];
+            }
+          });
+          setScoredNotes([...scoredRef.current]);
+          setCombo(0);
+        }
+        setTimeout(() => setGameOver(true), 100);
+      };
+      a.addEventListener("ended", handleEnded);
+    }
     if (!isPlaying) { await a.play().catch(console.error); setIsPlaying(true); }
     else { a.pause(); setIsPlaying(false); }
   };
@@ -404,7 +601,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   // ── Restart ──
   const restart = () => {
     const a = audioRef.current;
-    if (a) { a.currentTime = 0; if (isPlaying) a.play().catch(console.error); }
+    if (a) { a.currentTime = 0; a.play().catch(console.error); }
     chart?.events.forEach((e) => { e._scored = false; });
     nextIdxRef.current     = 0;
     scoreRef.current       = 0;
@@ -413,6 +610,8 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     scoredRef.current      = [];
     pitchHistoryRef.current = [];
     setScore(0); setCombo(0); setMaxCombo(0); setScoredNotes([]); setSongTimeMs(0);
+    setGameOver(false);
+    setIsPlaying(true);
   };
 
   // ── Derived stats ──
@@ -433,6 +632,20 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
 
   return (
     <div style={{ minHeight:"100vh", background:"#0a0a0f", color:"#f0f0f0", fontFamily:"'Courier New', monospace", padding:"24px" }}>
+
+      {/* Game Over Results Overlay */}
+      {gameOver && (
+        <ResultsScreen
+          chart={chart}
+          score={score}
+          maxCombo={maxCombo}
+          hits={hits}
+          misses={misses}
+          accuracy={accuracy}
+          scoredNotes={scoredNotes}
+          onRestart={restart}
+        />
+      )}
 
       {feedback && (
         <div style={{
@@ -507,7 +720,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
         </div>
       </div>
 
-      {/* FIX 1: Latency calibration slider */}
+      {/* Latency calibration */}
       <div style={{ background:"#111827", border:"1px solid #1f2937", borderRadius:8, padding:"12px 16px", marginBottom:24, display:"flex", alignItems:"center", gap:16 }}>
         <div style={{ fontSize:10, color:"#6b7280", letterSpacing:2, whiteSpace:"nowrap" }}>INPUT LATENCY</div>
         <input
