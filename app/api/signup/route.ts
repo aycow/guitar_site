@@ -56,8 +56,26 @@ export async function POST(req: Request) {
 
     // Connect to database
     console.log("\n5️⃣ Connecting to MongoDB...");
-    const client = await clientPromise;
-    console.log("✅ MongoDB client connected");
+    console.log("   ⏳ Waiting for MongoDB connection at:", process.env.MONGODB_URI);
+    console.log("   ⏳ Timeout: 30 seconds");
+
+    let client;
+    try {
+      client = await clientPromise;
+      console.log("✅ MongoDB client connected successfully");
+    } catch (connectionError: any) {
+      console.log("❌ MONGODB CONNECTION FAILED");
+      console.log("   Error Code:", connectionError.code || "N/A");
+      console.log("   Error Message:", connectionError.message);
+      console.log("   Address:", connectionError.address || "N/A");
+      console.log("   Port:", connectionError.port || "N/A");
+      console.log("   Errno:", connectionError.errno || "N/A");
+      console.log("   Syscall:", connectionError.syscall || "N/A");
+      console.log("\n❌ FIX: Make sure MongoDB is running!");
+      console.log("   Windows: mongod (in PowerShell/Command Prompt)");
+      console.log("   Check: Is mongod process running? Use 'tasklist | findstr mongod' on Windows");
+      throw connectionError;
+    }
 
     const db = client.db("guitar_academy");
     console.log("✅ Database selected: guitar_academy");
