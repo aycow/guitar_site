@@ -1307,8 +1307,10 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
       {/* Controls */}
       <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap", alignItems:"center" }}>
         <div style={{ background:"#111827", border:"1px solid #1f2937", borderRadius:8, padding:"8px 12px", display:"flex", alignItems:"center", gap:10 }}>
-          <span style={{ fontSize:12, color:"#9ca3af" }}>Input</span>
+          <label htmlFor="select-audio" style={{ fontSize:12, color:"#9ca3af", display:"inline-block" }}>Input</label>
           <select
+            id="select-audio"
+            aria-label="Audio input device"
             value={selectedDeviceId}
             onChange={(e) => setSelectedDeviceId(e.target.value)}
             style={{ background:"#0a0a0f", color:"#f0f0f0", border:"1px solid #374151", borderRadius:6, padding:"6px 8px", fontSize:12, maxWidth:280 }}
@@ -1371,8 +1373,10 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
 
       {/* Latency calibration */}
       <div style={{ background:"#111827", border:"1px solid #1f2937", borderRadius:8, padding:"12px 16px", marginBottom:24, display:"flex", alignItems:"center", gap:16 }}>
-        <div style={{ fontSize:10, color:"#6b7280", letterSpacing:2, whiteSpace:"nowrap" }}>INPUT LATENCY</div>
+        <label htmlFor="input-latency" style={{ fontSize:10, color:"#6b7280", letterSpacing:2, whiteSpace:"nowrap" }}>INPUT LATENCY</label>
         <input
+          id="input-latency"
+          aria-label="Input latency"
           type="range" min={-200} max={200} step={5}
           value={inputLatencyMs}
           onChange={(e) => setInputLatencyMs(Number(e.target.value))}
