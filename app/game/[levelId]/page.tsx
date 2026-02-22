@@ -2,6 +2,7 @@
 "use client";
 
 import React, { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import styles from "./page.module.css";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 
@@ -748,37 +749,18 @@ export function StaffPreview({
   ]);
 
   return (
-    <div
-      style={{
-        position: "relative",
-        background: "#111827",
-        border: "1px solid #1f2937",
-        borderRadius: 8,
-        padding: 12,
-        marginBottom: 24,
-      }}
-    >
-      <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: 2, marginBottom: 8 }}>
-        UPCOMING MEASURES (STAFF)
-      </div>
+    <div className={styles.staffPreview}>
+      <div className={styles.staffHeader}>UPCOMING MEASURES (STAFF)</div>
 
-      <div style={{ position: "relative" }}>
+      <div className={styles.relativeContainer}>
         {/* VexFlow renders into this div */}
         <div ref={containerRef} />
 
         {/* Playhead overlay */}
         {playheadX !== null && (
           <div
-            style={{
-              position: "absolute",
-              left: playheadX,
-              top: 0,
-              bottom: 0,
-              width: 2,
-              background: "#facc15",
-              boxShadow: "0 0 18px #facc1580",
-              pointerEvents: "none",
-            }}
+            className={styles.playhead}
+            style={{ left: playheadX }}
           />
         )}
       </div>
@@ -1347,23 +1329,18 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
         <button onClick={restart} style={btnStyle("#6b7280")}>↺ Restart</button>
 
         {/* ── Volume control ── */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          background: "#111827", border: "1px solid #1f2937",
-          borderRadius: 8, padding: "8px 14px",
-        }}>
+        <div className={styles.volumeControl}>
           <button
             onClick={toggleMute}
             title={isMuted ? "Unmute" : "Mute"}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              fontSize: 18, lineHeight: 1, padding: 0,
-              color: "#f0f0f0",
-            }}
+            className={styles.volumeButton}
+            aria-label={isMuted ? "Unmute" : "Mute"}
           >
             {volumeIcon()}
           </button>
+          <label htmlFor="volume-slider" className={styles.volumeLabelHidden}>Volume</label>
           <input
+            id="volume-slider"
             type="range"
             min={0}
             max={1}
@@ -1377,9 +1354,11 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
               const a = audioRef.current;
               if (a) a.volume = v;
             }}
-            style={{ width: 80, accentColor: "#60a5fa", cursor: "pointer" }}
+            className={styles.volumeSlider}
+            aria-label="Volume control"
+            title="Adjust volume"
           />
-          <span style={{ fontSize: 11, color: "#4b5563", minWidth: 30, textAlign: "right" }}>
+          <span className={styles.volumeLabel}>
             {isMuted ? "0%" : `${Math.round(volume * 100)}%`}
           </span>
         </div>

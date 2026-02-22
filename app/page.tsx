@@ -202,8 +202,9 @@ export default function Home() {
         {/* Filters */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12">
           <div>
-            <label className="block text-sm font-semibold text-zinc-300 mb-3">Difficulty</label>
+            <label htmlFor="select-difficulty" className="block text-sm font-semibold text-zinc-300 mb-3">Difficulty</label>
             <select
+              id="select-difficulty"
               value={selectedDifficulty}
               onChange={(e) => setSelectedDifficulty(e.target.value)}
               className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
@@ -216,8 +217,9 @@ export default function Home() {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-zinc-300 mb-3">Genre</label>
+            <label htmlFor="select-genre" className="block text-sm font-semibold text-zinc-300 mb-3">Genre</label>
             <select
+              id="select-genre"
               value={selectedGenre}
               onChange={(e) => setSelectedGenre(e.target.value)}
               className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
@@ -232,8 +234,9 @@ export default function Home() {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-zinc-300 mb-3">Duration</label>
+            <label htmlFor="select-duration" className="block text-sm font-semibold text-zinc-300 mb-3">Duration</label>
             <select
+              id="select-duration"
               value={selectedDuration}
               onChange={(e) => setSelectedDuration(e.target.value)}
               className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
