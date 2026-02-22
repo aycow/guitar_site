@@ -1,357 +1,355 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/Button";
+import { useState, useMemo } from "react";
+import { mockLevels } from "@/lib/game/mockLevels";
+import type { Level } from "@/types/game";
 
-type Status = "OFF" | "READY" | "CAPTURING" | "STOPPED" | "ERROR";
 
-function rmsDbfs(x: Float32Array) {
-  let sum = 0;
-  let peak = 0;
-  for (let i = 0; i < x.length; i++) {
-    const v = x[i];
-    sum += v * v;
-    const a = Math.abs(v);
-    if (a > peak) peak = a;
-  }
-  const rms = Math.sqrt(sum / x.length);
-  const db = 20 * Math.log10(rms + 1e-9);
-  return { rms, db, peak };
-}
+export default function Home() {
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string>("all");
+  const [selectedGenre, setSelectedGenre] = useState<string>("all");
+  const [selectedDuration, setSelectedDuration] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
-function autoCorrelatePitch(x: Float32Array, sampleRate: number) {
-  const { rms } = rmsDbfs(x);
-  if (rms < 0.01) return null;
-
-  let mean = 0;
-  for (let i = 0; i < x.length; i++) mean += x[i];
-  mean /= x.length;
-
-  const SIZE = x.length;
-
-  const MIN_HZ = 80;
-  const MAX_HZ = 1200;
-  const maxLag = Math.floor(sampleRate / MIN_HZ);
-  const minLag = Math.floor(sampleRate / MAX_HZ);
-
-  let bestLag = -1;
-  let bestCorr = 0;
-
-  for (let lag = minLag; lag <= maxLag; lag++) {
-    let corr = 0;
-    let n1 = 0;
-    let n2 = 0;
-    for (let i = 0; i < SIZE - lag; i++) {
-      const a = x[i] - mean;
-      const b = x[i + lag] - mean;
-      corr += a * b;
-      n1 += a * a;
-      n2 += b * b;
-    }
-    corr /= Math.sqrt(n1 * n2) + 1e-12;
-    if (corr > bestCorr) {
-      bestCorr = corr;
-      bestLag = lag;
-    }
-  }
-
-  if (bestLag === -1 || bestCorr < 0.55) return null;
-
-  const hz = sampleRate / bestLag;
-  return { hz, corr: bestCorr };
-}
-
-export default function InputTestPage() {
-  const [status, setStatus] = useState<Status>("OFF");
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [deviceId, setDeviceId] = useState<string>("");
-
-  const [readout, setReadout] = useState({
-    sampleRate: 0,
-    rms: 0,
-    db: -120,
-    peak: 0,
-    clipping: false,
-    pitchHz: 0,
-    pitchConf: 0,
-  });
-
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number | null>(null);
-
-  const waveCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const specCanvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  const timeBuf = useMemo(() => new Float32Array(2048), []);
-  const freqBuf = useMemo(() => new Uint8Array(1024), []);
-
-  async function init() {
-    try {
-      setStatus("OFF");
-
-      const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
-      tmp.getTracks().forEach((t) => t.stop());
-
-      const all = await navigator.mediaDevices.enumerateDevices();
-      const inputs = all.filter((d) => d.kind === "audioinput");
-      setDevices(inputs);
-      setDeviceId(inputs[0]?.deviceId ?? "");
-      setStatus("READY");
-    } catch (e) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      console.error(err);
-      setStatus("ERROR");
-      alert(`Init failed: ${err.message}`);
-    }
-  }
-
-  function stop() {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = null;
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-
-    const ctx = audioCtxRef.current;
-    audioCtxRef.current = null;
-    analyserRef.current = null;
-
-    if (ctx) ctx.close().catch(() => {});
-    setStatus("STOPPED");
-  }
-
-  async function start() {
-    try {
-      stop();
-
-      if (!deviceId) {
-        alert("Pick an input device first.");
-        return;
-      }
-
-      const constraints: MediaStreamConstraints = {
-        audio: {
-          deviceId: { exact: deviceId },
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          channelCount: 1,
-        },
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-
-      const AudioContextClass =
-        window.AudioContext ??
-        (window as Window & { webkitAudioContext?: typeof AudioContext })
-          .webkitAudioContext;
-
-      const audioCtx = new AudioContextClass({ latencyHint: "interactive" });
-      audioCtxRef.current = audioCtx;
-
-      const source = audioCtx.createMediaStreamSource(stream);
-
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.0;
-      analyserRef.current = analyser;
-
-      source.connect(analyser);
-
-      setStatus("CAPTURING");
-
-      const draw = () => {
-        const ctx = audioCtxRef.current;
-        const an = analyserRef.current;
-        if (!ctx || !an) return;
-
-        an.getFloatTimeDomainData(timeBuf);
-        an.getByteFrequencyData(freqBuf);
-
-        const { rms, db, peak } = rmsDbfs(timeBuf);
-        const clipping = peak >= 0.99;
-
-        const pitch = autoCorrelatePitch(timeBuf, ctx.sampleRate);
-        setReadout({
-          sampleRate: ctx.sampleRate,
-          rms,
-          db,
-          peak,
-          clipping,
-          pitchHz: pitch?.hz ?? 0,
-          pitchConf: pitch?.corr ?? 0,
-        });
-
-        const wave = waveCanvasRef.current;
-        if (wave) {
-          const g = wave.getContext("2d");
-          if (g) {
-            const w = wave.width;
-            const h = wave.height;
-            g.clearRect(0, 0, w, h);
-            g.fillStyle = "#0b0f19";
-            g.fillRect(0, 0, w, h);
-
-            g.strokeStyle = "rgba(255,255,255,0.2)";
-            g.beginPath();
-            g.moveTo(0, h / 2);
-            g.lineTo(w, h / 2);
-            g.stroke();
-
-            g.strokeStyle = "#22c55e";
-            g.beginPath();
-            for (let i = 0; i < timeBuf.length; i++) {
-              const x = (i / (timeBuf.length - 1)) * w;
-              const y = (0.5 - timeBuf[i] / 2) * h;
-              if (i === 0) g.moveTo(x, y);
-              else g.lineTo(x, y);
-            }
-            g.stroke();
-          }
-        }
-
-        const spec = specCanvasRef.current;
-        if (spec) {
-          const g = spec.getContext("2d");
-          if (g) {
-            const w = spec.width;
-            const h = spec.height;
-            g.clearRect(0, 0, w, h);
-            g.fillStyle = "#0b0f19";
-            g.fillRect(0, 0, w, h);
-
-            const n = freqBuf.length;
-            const barW = w / n;
-
-            g.fillStyle = "#60a5fa";
-            for (let i = 0; i < n; i++) {
-              const v = freqBuf[i] / 255;
-              const barH = v * h;
-              g.fillRect(i * barW, h - barH, Math.max(1, barW), barH);
-            }
-          }
-        }
-
-        rafRef.current = requestAnimationFrame(draw);
-      };
-
-      rafRef.current = requestAnimationFrame(draw);
-    } catch (e) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      console.error(err);
-      setStatus("ERROR");
-      alert(
-        `Start failed: ${err.message}\n\nTip: use http://localhost:3000 and allow mic permission.`
-      );
-    }
-  }
-
-  useEffect(() => {
-    return () => stop();
+  // Get unique genres and difficulty levels
+  const genres = useMemo(() => {
+    const categories = Array.from(
+      new Set(mockLevels.map((level) => level.category))
+    );
+    return categories;
   }, []);
 
+  const difficulties = ["easy", "medium", "hard"];
+
+  // Filter levels based on criteria
+  const filteredLevels = useMemo(() => {
+    return mockLevels.filter((level) => {
+      // Difficulty filter
+      if (selectedDifficulty !== "all" && level.difficulty !== selectedDifficulty) {
+        return false;
+      }
+
+      // Genre/Category filter
+      if (selectedGenre !== "all" && level.category !== selectedGenre) {
+        return false;
+      }
+
+      // Duration filter
+      if (selectedDuration !== "all") {
+        const durationMinutes = level.durationMs / 60000;
+        if (selectedDuration === "short" && durationMinutes > 3) return false;
+        if (selectedDuration === "medium" && (durationMinutes <= 2 || durationMinutes > 5)) return false;
+        if (selectedDuration === "long" && durationMinutes <= 4) return false;
+      }
+
+      // Search query filter
+      if (
+        searchQuery &&
+        !level.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
+        !level.artist.toLowerCase().includes(searchQuery.toLowerCase())
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [selectedDifficulty, selectedGenre, selectedDuration, searchQuery]);
+
+  const getDifficultyStars = (difficulty: string) => {
+    switch (difficulty) {
+      case "easy":
+        return "⭐";
+      case "medium":
+        return "⭐⭐";
+      case "hard":
+        return "⭐⭐⭐";
+      default:
+        return "";
+    }
+  };
+
+  const getDifficultyColor = (difficulty: string) => {
+    switch (difficulty) {
+      case "easy":
+        return "from-green-500/10 to-green-600/5 border-green-500/30";
+      case "medium":
+        return "from-yellow-500/10 to-yellow-600/5 border-yellow-500/30";
+      case "hard":
+        return "from-red-500/10 to-red-600/5 border-red-500/30";
+      default:
+        return "";
+    }
+  };
+
+  const formatDuration = (ms: number) => {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
+
   return (
-    <main className="mx-auto max-w-4xl p-6">
-      <h1 className="text-2xl font-semibold">Audio Interface Input Test</h1>
-      <p className="mt-2 text-sm text-zinc-600">
-        Use <span className="font-medium">http://localhost:3000</span>. Click Init → select your
-        interface → Start → strum and watch waveform + meters.
-      </p>
+    <main className="min-h-screen bg-gradient-to-br from-zinc-900 via-zinc-800 to-black">
+      {/* Navigation Bar */}
+      <nav className="border-b border-zinc-700 bg-zinc-950/50 backdrop-blur-sm sticky top-0 z-50">
+        <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-white">🎸 GuitarGame</h1>
+          <div className="flex gap-2 sm:gap-4">
+            <Link href="/leaderboard">
+              <Button variant="ghost" size="sm">
+                Leaderboard
+              </Button>
+            </Link>
+            <Link href="/lobby">
+              <Button variant="ghost" size="sm">
+                Multiplayer
+              </Button>
+            </Link>
+            <Link href="/game/1">
+              <Button size="sm">Play</Button>
+            </Link>
+          </div>
+        </div>
+      </nav>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <button
-          onClick={init}
-          className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-        >
-          Init / List Inputs
-        </button>
+      {/* Hero Section */}
+      <section className="mx-auto max-w-7xl px-6 py-12">
+        <div className="text-center mb-16">
+          <h2 className="text-5xl font-bold text-white mb-4">
+            Master Your Pitch Accuracy
+          </h2>
+          <p className="text-xl text-zinc-300 mb-8 max-w-2xl mx-auto">
+            Select a song below, practice scales, chords, and techniques to improve your guitar skills.
+          </p>
+        </div>
 
-        <select
-          value={deviceId}
-          onChange={(e) => setDeviceId(e.target.value)}
-          className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm"
-        >
-          {devices.map((d) => (
-            <option key={d.deviceId} value={d.deviceId}>
-              {d.label || `Audio Input (${d.deviceId.slice(0, 6)}…)`}
-            </option>
-          ))}
-        </select>
-
-        <button
-          onClick={start}
-          disabled={status !== "READY" && status !== "STOPPED" && status !== "CAPTURING"}
-          className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50"
-        >
-          Start
-        </button>
-
-        <button
-          onClick={stop}
-          className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium hover:bg-zinc-50"
-        >
-          Stop
-        </button>
-
-        <span className="ml-2 rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700">
-          {status}
-        </span>
-      </div>
-
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <div className="rounded-2xl border border-zinc-200 p-4">
-          <div className="text-sm font-semibold">Waveform</div>
-          <canvas
-            ref={waveCanvasRef}
-            width={560}
-            height={220}
-            className="mt-3 w-full rounded-xl border border-zinc-200"
+        {/* Search Bar */}
+        <div className="mb-8">
+          <input
+            type="text"
+            placeholder="Search songs or artists..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-6 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
           />
         </div>
 
-        <div className="rounded-2xl border border-zinc-200 p-4">
-          <div className="text-sm font-semibold">Spectrum</div>
-          <canvas
-            ref={specCanvasRef}
-            width={560}
-            height={220}
-            className="mt-3 w-full rounded-xl border border-zinc-200"
-          />
-        </div>
-      </div>
+        {/* Filters */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-12">
+          {/* Difficulty Filter */}
+          <div>
+            <label className="block text-sm font-semibold text-zinc-300 mb-3">
+              Difficulty
+            </label>
+            <select
+              value={selectedDifficulty}
+              onChange={(e) => setSelectedDifficulty(e.target.value)}
+              className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="all">All Levels</option>
+              <option value="easy">Easy (⭐)</option>
+              <option value="medium">Medium (⭐⭐)</option>
+              <option value="hard">Hard (⭐⭐⭐)</option>
+            </select>
+          </div>
 
-      <div className="mt-6 grid gap-3 md:grid-cols-3">
-        <Card label="Sample rate" value={`${readout.sampleRate} Hz`} />
-        <Card label="RMS (dBFS-ish)" value={`${readout.db.toFixed(1)} dB`} />
-        <Card
-          label="Peak / Clip"
-          value={`${readout.peak.toFixed(3)}${readout.clipping ? " (CLIP)" : ""}`}
-        />
-        <Card
-          label="Pitch (rough)"
-          value={readout.pitchHz > 0 ? `${readout.pitchHz.toFixed(1)} Hz` : "—"}
-        />
-        <Card
-          label="Pitch confidence"
-          value={readout.pitchHz > 0 ? readout.pitchConf.toFixed(2) : "—"}
-        />
-        <div className="rounded-2xl border border-zinc-200 p-4 text-sm text-zinc-600">
-          
+          {/* Genre Filter */}
+          <div>
+            <label className="block text-sm font-semibold text-zinc-300 mb-3">
+              Genre
+            </label>
+            <select
+              value={selectedGenre}
+              onChange={(e) => setSelectedGenre(e.target.value)}
+              className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="all">All Genres</option>
+              {genres.map((genre) => (
+                <option key={genre} value={genre}>
+                  {genre.charAt(0).toUpperCase() + genre.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Duration Filter */}
+          <div>
+            <label className="block text-sm font-semibold text-zinc-300 mb-3">
+              Duration
+            </label>
+            <select
+              value={selectedDuration}
+              onChange={(e) => setSelectedDuration(e.target.value)}
+              className="w-full bg-zinc-800/50 border border-zinc-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
+            >
+              <option value="all">All Durations</option>
+              <option value="short">Short (0-3 min)</option>
+              <option value="medium">Medium (2-5 min)</option>
+              <option value="long">Long (4+ min)</option>
+            </select>
+          </div>
+
+          {/* Results Count */}
+          <div className="flex items-end">
+            <div className="w-full bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-2">
+              <p className="text-emerald-400 font-semibold text-center">
+                {filteredLevels.length} Song{filteredLevels.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+          </div>
         </div>
-      </div>
+
+        {/* Reset Filters Button */}
+        <div className="mb-8">
+          {(selectedDifficulty !== "all" ||
+            selectedGenre !== "all" ||
+            selectedDuration !== "all" ||
+            searchQuery) && (
+            <button
+              onClick={() => {
+                setSelectedDifficulty("all");
+                setSelectedGenre("all");
+                setSelectedDuration("all");
+                setSearchQuery("");
+              }}
+              className="text-emerald-400 hover:text-emerald-300 text-sm font-semibold underline"
+            >
+              Clear all filters
+            </button>
+          )}
+        </div>
+
+        {/* Songs Grid */}
+        {filteredLevels.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
+            {filteredLevels.map((level) => (
+              <Link key={level.id} href={`/game/${level.id}`}>
+                <div
+                  className={`bg-gradient-to-br ${getDifficultyColor(
+                    level.difficulty
+                  )} border rounded-xl overflow-hidden hover:shadow-lg hover:shadow-emerald-500/20 transition-all cursor-pointer transform hover:scale-105`}
+                >
+                  {/* Album Cover */}
+                  <div className="relative w-full h-40 bg-zinc-700 overflow-hidden">
+                    {level.albumCover ? (
+                      <img
+                        src={level.albumCover}
+                        alt={level.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-4xl">
+                        🎸
+                      </div>
+                    )}
+                    {/* Difficulty Badge */}
+                    <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm rounded-lg px-3 py-1">
+                      <span className="text-lg">{getDifficultyStars(level.difficulty)}</span>
+                    </div>
+                  </div>
+
+                  {/* Content */}
+                  <div className="p-6">
+                    <h3 className="text-xl font-bold text-white mb-2 line-clamp-2">
+                      {level.title}
+                    </h3>
+                    <p className="text-sm text-zinc-400 mb-4">{level.artist}</p>
+
+                    {/* Stats */}
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="bg-black/30 rounded-lg p-2">
+                        <p className="text-xs text-zinc-400">BPM</p>
+                        <p className="text-sm font-semibold text-white">{level.bpm}</p>
+                      </div>
+                      <div className="bg-black/30 rounded-lg p-2">
+                        <p className="text-xs text-zinc-400">Duration</p>
+                        <p className="text-sm font-semibold text-white">
+                          {formatDuration(level.durationMs)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Genre Badge */}
+                    <div className="mb-4">
+                      <span className="inline-block bg-zinc-700/50 rounded-full px-3 py-1 text-xs text-zinc-300 capitalize">
+                        {level.category}
+                      </span>
+                    </div>
+
+                    {/* Play Button */}
+                    <Button className="w-full" size="sm">
+                      Play Now →
+                    </Button>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-zinc-900/50 border border-zinc-700 rounded-xl p-12 text-center mb-16">
+            <p className="text-zinc-400 text-lg mb-6">
+              No songs match your filters. Try adjusting them!
+            </p>
+            <button
+              onClick={() => {
+                setSelectedDifficulty("all");
+                setSelectedGenre("all");
+                setSelectedDuration("all");
+                setSearchQuery("");
+              }}
+              className="text-emerald-400 hover:text-emerald-300 font-semibold underline"
+            >
+              Clear all filters
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* Directory Section */}
+      <section className="mx-auto max-w-7xl px-6 pb-20">
+        <div className="bg-zinc-900/50 border border-zinc-700 rounded-xl p-8">
+          <h3 className="text-2xl font-bold text-white mb-6">Quick Access</h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Link href="/game/1">
+              <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/30 hover:border-emerald-500/60 rounded-lg p-6 text-center transition-all cursor-pointer hover:shadow-lg hover:shadow-emerald-500/20">
+                <div className="text-4xl mb-3">🎮</div>
+                <p className="text-white font-semibold">Campaign</p>
+                <p className="text-zinc-400 text-sm mt-2">Play single-player levels</p>
+              </div>
+            </Link>
+
+            <Link href="/lobby">
+              <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border border-blue-500/30 hover:border-blue-500/60 rounded-lg p-6 text-center transition-all cursor-pointer hover:shadow-lg hover:shadow-blue-500/20">
+                <div className="text-4xl mb-3">👥</div>
+                <p className="text-white font-semibold">Multiplayer</p>
+                <p className="text-zinc-400 text-sm mt-2">Play with friends</p>
+              </div>
+            </Link>
+
+            <Link href="/leaderboard">
+              <div className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border border-amber-500/30 hover:border-amber-500/60 rounded-lg p-6 text-center transition-all cursor-pointer hover:shadow-lg hover:shadow-amber-500/20">
+                <div className="text-4xl mb-3">🏆</div>
+                <p className="text-white font-semibold">Leaderboard</p>
+                <p className="text-zinc-400 text-sm mt-2">Check global rankings</p>
+              </div>
+            </Link>
+
+            <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border border-purple-500/30 rounded-lg p-6 text-center">
+              <div className="text-4xl mb-3">📊</div>
+              <p className="text-white font-semibold">Statistics</p>
+              <p className="text-zinc-400 text-sm mt-2">Coming soon</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-zinc-700 bg-zinc-950/50 py-8">
+        <div className="mx-auto max-w-7xl px-6 text-center text-zinc-400">
+          <p>&copy; 2026 GuitarGame. Master your pitch, compete with the world.</p>
+        </div>
+      </footer>
     </main>
-  );
-}
-
-function Card({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-zinc-200 p-4">
-      <div className="text-xs text-zinc-600">{label}</div>
-      <div className="mt-1 text-base font-semibold">{value}</div>
-    </div>
   );
 }
