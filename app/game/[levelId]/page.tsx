@@ -685,11 +685,24 @@ export function StaffPreview({
             .sort((a, b) => a - b)
             .map((m) => midiToVexKey(m + NOTATION_TRANSPOSE));
 
-          const n = new StaveNote({ clef, keys, duration: "16" });
+          const n = new StaveNote({
+            clef,
+            keys,
+            duration: "16", // internal spacing grid only (not visual duration)
+          });
+
+          // Color the notehead so it reads as a guide/onset marker
+          n.setStyle?.({ fillStyle: "#93c5fd", strokeStyle: "#93c5fd" });
+
+          // Hide rhythmic semantics (stem + flag) so users don't think it's true duration notation
+          n.setStemStyle?.({ fillStyle: "transparent", strokeStyle: "transparent" });
+          n.setFlagStyle?.({ fillStyle: "transparent", strokeStyle: "transparent" });
 
           keys.forEach((k, i) => {
             const acc = accidentalForKey(k);
-            if (acc) n.addModifier(new Accidental(acc), i);
+            if (acc) {
+              n.addModifier(new Accidental(acc), i);
+            }
           });
 
           return n;
@@ -777,6 +790,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   const { levelId } = use(params);
   const { data: session } = useSession();
 
+  
   const [chart,        setChart       ] = useState<Chart | null>(null);
   const [isPlaying,    setIsPlaying   ] = useState(false);
   const [micReady,     setMicReady    ] = useState(false);
