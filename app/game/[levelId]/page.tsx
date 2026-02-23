@@ -848,10 +848,13 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   // ── Load chart ──
   useEffect(() => {
     (async () => {
-      const res = await fetch(`/charts/${levelId}.json`, { cache: "no-store" });
+      let res = await fetch(`/api/charts/${levelId}`, { cache: "no-store" });
+      if (!res.ok) {
+        res = await fetch(`/charts/${levelId}.json`, { cache: "no-store" });
+      }
       if (!res.ok) throw new Error(`Failed to load chart: ${res.status}`);
       const data: Chart = await res.json();
-      if (data.audioUrl.includes("REPLACE_ME") || !data.audioUrl.endsWith(".mp3")) {
+      if (!data.audioUrl || data.audioUrl.includes("REPLACE_ME")) {
         data.audioUrl = `/audio/${levelId}.mp3`;
       }
       data.events.forEach((e) => { e._scored = false; });

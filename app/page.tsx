@@ -184,6 +184,9 @@ export default function Home() {
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-white font-mono">🎸 Guitarverse</h1>
           <div className="flex items-center gap-2 sm:gap-4">
+            <Link href="/create-level">
+              <Button variant="ghost" size="sm">Create Level</Button>
+            </Link>
             <Link href="/leaderboard">
               <Button variant="ghost" size="sm">Leaderboard</Button>
             </Link>
@@ -352,7 +355,15 @@ export default function Home() {
       <section className="mx-auto max-w-7xl px-6 pb-20">
         <div className="bg-zinc-900/50 border border-zinc-700 rounded-xl p-8">
           <h3 className="text-2xl font-bold text-white mb-6">Quick Access</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Link href="/create-level">
+              <div className="bg-gradient-to-br from-cyan-500/10 to-sky-600/5 border border-cyan-500/30 hover:border-cyan-500/60 rounded-lg p-6 text-center transition-all cursor-pointer hover:shadow-lg hover:shadow-cyan-500/20">
+                <div className="text-4xl mb-3">🎼</div>
+                <p className="text-white font-semibold">Create Level</p>
+                <p className="text-zinc-400 text-sm mt-2">Import MIDI or audio and publish your chart</p>
+              </div>
+            </Link>
+
             <Link href="/campaign">
               <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border border-emerald-500/30 hover:border-emerald-500/60 rounded-lg p-6 text-center transition-all cursor-pointer hover:shadow-lg hover:shadow-emerald-500/20">
                 <div className="text-4xl mb-3">🎮</div>
