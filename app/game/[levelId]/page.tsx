@@ -805,6 +805,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   const [audioInputs,  setAudioInputs ] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [inputLatencyMs, setInputLatencyMs] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
   const [pitchHistoryCount, setPitchHistoryCount] = useState(0);
   const [gameOver,     setGameOver    ] = useState(false);
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
@@ -1320,62 +1321,11 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
 
       {/* Controls */}
       <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap", alignItems:"center" }}>
-        <div style={{ background:"#111827", border:"1px solid #1f2937", borderRadius:8, padding:"8px 12px", display:"flex", alignItems:"center", gap:10 }}>
-          <span style={{ fontSize:12, color:"#9ca3af" }}>Input</span>
-          <select
-            value={selectedDeviceId}
-            onChange={(e) => setSelectedDeviceId(e.target.value)}
-            style={{ background:"#0a0a0f", color:"#f0f0f0", border:"1px solid #374151", borderRadius:6, padding:"6px 8px", fontSize:12, maxWidth:280 }}
-          >
-            {audioInputs.map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {d.label || `Audio Input (${d.deviceId.slice(0, 6)}…)`}
-              </option>
-            ))}
-          </select>
-          <button onClick={() => void refreshAudioInputs()} style={{ ...btnStyle("#374151"), padding:"6px 10px", fontSize:11 }}>Refresh</button>
-          {micReady && <button onClick={() => void initMic()} style={{ ...btnStyle("#3b82f6"), padding:"6px 10px", fontSize:11 }}>Apply</button>}
-        </div>
-
-        {!micReady && <button onClick={() => void initMic()} style={btnStyle("#3b82f6")}>🎙 Enable Input</button>}
-        {micReady  && <button onClick={stopMic}              style={btnStyle("#ef4444")}>⏹ Stop Input</button>}
-        <button onClick={toggle}  style={btnStyle(isPlaying ? "#f59e0b" : "#22c55e")}>{isPlaying ? "⏸ Pause" : "▶ Play"}</button>
-        <button onClick={restart} style={btnStyle("#6b7280")}>↺ Restart</button>
-
-        {/* ── Volume control ── */}
-        <div className={styles.volumeControl}>
-          <button
-            onClick={toggleMute}
-            title={isMuted ? "Unmute" : "Mute"}
-            className={styles.volumeButton}
-            aria-label={isMuted ? "Unmute" : "Mute"}
-          >
-            {volumeIcon()}
-          </button>
-          <label htmlFor="volume-slider" className={styles.volumeLabelHidden}>Volume</label>
-          <input
-            id="volume-slider"
-            type="range"
-            min={0}
-            max={1}
-            step={0.02}
-            value={isMuted ? 0 : volume}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              setVolume(v);
-              setIsMuted(v === 0);
-              if (v > 0) prevVolumeRef.current = v;
-              const a = audioRef.current;
-              if (a) a.volume = v;
-            }}
-            className={styles.volumeSlider}
-            aria-label="Volume control"
-            title="Adjust volume"
-          />
-          <span className={styles.volumeLabel}>
-            {isMuted ? "0%" : `${Math.round(volume * 100)}%`}
-          </span>
-        </div>
+        <button onClick={toggle} style={btnStyle(isPlaying ? "#f59e0b" : "#22c55e")}>{isPlaying ? "Pause" : "Play"}</button>
+        <button onClick={restart} style={btnStyle("#6b7280")}>Restart</button>
+        <button onClick={() => setShowSettings((prev) => !prev)} style={btnStyle(showSettings ? "#1d4ed8" : "#374151")}>
+          {showSettings ? "Hide Settings" : "Settings"}
+        </button>
 
         <div style={{ display:"flex", alignItems:"center", gap:8, background:"#111827", border:"1px solid #1f2937", borderRadius:8, padding:"8px 14px", fontSize:13 }}>
           <div style={{ width:8, height:8, borderRadius:"50%", background:micReady ? "#22c55e" : "#374151", boxShadow:micReady ? "0 0 8px #22c55e" : "none" }} />
@@ -1383,23 +1333,86 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
         </div>
       </div>
 
-      {/* Latency calibration */}
-      <div style={{ background:"#111827", border:"1px solid #1f2937", borderRadius:8, padding:"12px 16px", marginBottom:24, display:"flex", alignItems:"center", gap:16 }}>
-        <div style={{ fontSize:10, color:"#6b7280", letterSpacing:2, whiteSpace:"nowrap" }}>INPUT LATENCY</div>
-        <input
-          type="range" min={-200} max={200} step={5}
-          value={inputLatencyMs}
-          onChange={(e) => setInputLatencyMs(Number(e.target.value))}
-          style={{ flex:1, accentColor:"#60a5fa" }}
-        />
-        <div style={{ fontSize:14, fontWeight:700, color:"#60a5fa", minWidth:60, textAlign:"right" }}>
-          {inputLatencyMs > 0 ? "+" : ""}{inputLatencyMs} ms
+      {showSettings && (
+        <div className={styles.settingsPanel}>
+          <div className={styles.settingsSection}>
+            <div className={styles.settingsLabel}>INPUT DEVICE</div>
+            <div className={styles.inputRow}>
+              <select
+                value={selectedDeviceId}
+                onChange={(e) => setSelectedDeviceId(e.target.value)}
+                className={styles.inputSelect}
+              >
+                {audioInputs.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label || `Audio Input (${d.deviceId.slice(0, 6)}...)`}
+                  </option>
+                ))}
+              </select>
+              <button onClick={() => void refreshAudioInputs()} style={{ ...btnStyle("#374151"), padding:"6px 10px", fontSize:11 }}>Refresh</button>
+              {!micReady && <button onClick={() => void initMic()} style={{ ...btnStyle("#3b82f6"), padding:"6px 10px", fontSize:11 }}>Enable Input</button>}
+              {micReady && <button onClick={stopMic} style={{ ...btnStyle("#ef4444"), padding:"6px 10px", fontSize:11 }}>Stop Input</button>}
+              {micReady && <button onClick={() => void initMic()} style={{ ...btnStyle("#2563eb"), padding:"6px 10px", fontSize:11 }}>Apply Selection</button>}
+            </div>
+          </div>
+
+          <div className={styles.settingsSection}>
+            <div className={styles.settingsLabel}>VOLUME</div>
+            <div className={styles.volumeControl}>
+              <button
+                onClick={toggleMute}
+                title={isMuted ? "Unmute" : "Mute"}
+                className={styles.volumeButton}
+                aria-label={isMuted ? "Unmute" : "Mute"}
+              >
+                {volumeIcon()}
+              </button>
+              <label htmlFor="volume-slider" className={styles.volumeLabelHidden}>Volume</label>
+              <input
+                id="volume-slider"
+                type="range"
+                min={0}
+                max={1}
+                step={0.02}
+                value={isMuted ? 0 : volume}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setVolume(v);
+                  setIsMuted(v === 0);
+                  if (v > 0) prevVolumeRef.current = v;
+                  const a = audioRef.current;
+                  if (a) a.volume = v;
+                }}
+                className={styles.volumeSlider}
+                aria-label="Volume control"
+                title="Adjust volume"
+              />
+              <span className={styles.volumeLabel}>
+                {isMuted ? "0%" : `${Math.round(volume * 100)}%`}
+              </span>
+            </div>
+          </div>
+
+          <div className={styles.settingsSection}>
+            <div className={styles.settingsLabel}>INPUT LATENCY</div>
+            <div className={styles.latencyRow}>
+              <input
+                type="range" min={-200} max={200} step={5}
+                value={inputLatencyMs}
+                onChange={(e) => setInputLatencyMs(Number(e.target.value))}
+                className={styles.latencySlider}
+              />
+              <div className={styles.latencyValue}>
+                {inputLatencyMs > 0 ? "+" : ""}{inputLatencyMs} ms
+              </div>
+              <button onClick={() => setInputLatencyMs(0)} style={{ ...btnStyle("#374151"), padding:"4px 10px", fontSize:11 }}>Reset</button>
+            </div>
+            <div className={styles.latencyHint}>
+              If notes feel late, drag left. If early, drag right.
+            </div>
+          </div>
         </div>
-        <button onClick={() => setInputLatencyMs(0)} style={{ ...btnStyle("#374151"), padding:"4px 10px", fontSize:11 }}>Reset</button>
-        <div style={{ fontSize:11, color:"#4b5563", maxWidth:200 }}>
-          If notes feel late, drag left. If early, drag right.
-        </div>
-      </div>
+      )}
 
       {/* Pitch monitor */}
       <div style={{ background:"#111827", border:"1px solid #1f2937", borderRadius:8, padding:"16px", marginBottom:24, display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
@@ -1453,3 +1466,4 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     </div>
   );
 }
+
