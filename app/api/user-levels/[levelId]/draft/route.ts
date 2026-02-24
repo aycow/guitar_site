@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SaveDraftRequest, SaveDraftResponse } from "@/types/level-import";
+import { STEM_TARGETS } from "@/types/level-import";
 import { requireUserSession } from "@/lib/level-import/auth";
 import { getImportCollections } from "@/lib/level-import/db";
 import { sortEvents } from "@/lib/level-import/utils";
@@ -12,6 +13,12 @@ function isValidChartInput(payload: SaveDraftRequest["chart"]) {
     typeof payload.id === "string" &&
     typeof payload.title === "string" &&
     typeof payload.audioUrl === "string" &&
+    (payload.fullMixAudioUrl === undefined || typeof payload.fullMixAudioUrl === "string") &&
+    (payload.analysisAudioUrl === undefined || typeof payload.analysisAudioUrl === "string") &&
+    (payload.stemAudioUrl === undefined || typeof payload.stemAudioUrl === "string") &&
+    (payload.analysisStem === undefined || STEM_TARGETS.includes(payload.analysisStem)) &&
+    (payload.analysisToPlaybackOffsetMs === undefined || typeof payload.analysisToPlaybackOffsetMs === "number") &&
+    (payload.analysisFirstActivityMs === undefined || typeof payload.analysisFirstActivityMs === "number") &&
     typeof payload.offsetMs === "number" &&
     (typeof payload.bpmHint === "number" || payload.bpmHint === null) &&
     Array.isArray(payload.events)

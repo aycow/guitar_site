@@ -111,6 +111,30 @@
   color: #fde68a;
 }
 
+.warningList {
+  margin: 0;
+  padding-left: 18px;
+  color: #fde68a;
+}
+
+.inlineActions .sourceToggle {
+  border: 1px solid #3b516d;
+  border-radius: 999px;
+  background: #1a2537;
+  color: #cbd5e1;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.inlineActions .sourceToggleActive {
+  border: 1px solid #22d3ee;
+  border-radius: 999px;
+  background: #0f2f40;
+  color: #cffafe;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
 .timeline {
   display: grid;
   gap: 8px;

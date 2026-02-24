@@ -10,7 +10,7 @@ import { buildLevelId, sortEvents } from "@/lib/level-import/utils";
 import { getAssetStorage } from "@/lib/storage/assetStorage";
 import { runMidiImportWorker } from "@/lib/level-import/workers/midiImportWorker";
 import { runAudioPreprocessWorker } from "@/lib/level-import/workers/audioPreprocessWorker";
-import { getTranscriber } from "@/lib/level-import/transcriber/placeholder";
+import { getTranscriber } from "@/lib/level-import/transcriber/basicPitch";
 import { runCleanupPipeline } from "@/lib/level-import/processing/cleanup";
 import { runBeatTracking } from "@/lib/level-import/processing/beatTracking";
 import { runQuantization } from "@/lib/level-import/processing/quantization";
@@ -21,6 +21,10 @@ function toErrorMessage(error: unknown) {
     return error.message;
   }
   return "Unexpected processing error";
+}
+
+function mapStageWarnings(stage: string, warnings: string[]) {
+  return warnings.map((warning) => `[${stage}] ${warning}`);
 }
 
 function mapEventIds(chart: LevelChart): LevelChart {
@@ -152,7 +156,11 @@ async function processMidiJob(job: LevelImportJobDocument, sourceAsset: AssetDoc
       bpmHint: beatTracking.bpm ?? imported.chart.bpmHint,
       events: quantized.events,
     },
-    warnings: [...imported.warnings, ...beatTracking.warnings, ...quantized.warnings],
+    warnings: [
+      ...mapStageWarnings("MIDI import", imported.warnings),
+      ...mapStageWarnings("Beat tracking", beatTracking.warnings),
+      ...mapStageWarnings("Quantization", quantized.warnings),
+    ],
   };
 }
 
@@ -162,8 +170,12 @@ async function processAudioJob(job: LevelImportJobDocument, sourceAsset: AssetDo
   const levelId = job.levelId || buildLevelId(job.params.title);
   const sourceAbsolutePath = storage.resolveAbsolutePath(sourceAsset.storagePath);
 
-  let selectedAudioPath = sourceAbsolutePath;
-  let selectedAudioUrl = sourceAsset.publicUrl;
+  const fullMixAudioUrl = sourceAsset.publicUrl;
+  let analysisAudioPath = sourceAbsolutePath;
+  let analysisAudioUrl = sourceAsset.publicUrl;
+  let stemAudioUrl: string | undefined;
+  let analysisStem: LevelChart["analysisStem"] | undefined =
+    job.sourceType === "full_mix_audio" ? job.params.selectedStem : undefined;
 
   if (job.sourceType === "full_mix_audio") {
     await updateImportJobProgress(job._id as ObjectId, {
@@ -176,9 +188,13 @@ async function processAudioJob(job: LevelImportJobDocument, sourceAsset: AssetDo
       sourceAudioAbsolutePath: sourceAbsolutePath,
       selectedStem: job.params.selectedStem,
     });
-    selectedAudioPath = separated.stemAbsolutePath;
-    selectedAudioUrl = separated.stemPublicUrl;
-    warnings.push(...separated.warnings);
+    analysisAudioPath = separated.stemAbsolutePath;
+    analysisAudioUrl = separated.stemPublicUrl;
+    if (separated.stemPublicUrl !== sourceAsset.publicUrl) {
+      stemAudioUrl = separated.stemPublicUrl;
+      analysisStem = job.params.selectedStem;
+    }
+    warnings.push(...mapStageWarnings("Stem separation", separated.warnings));
   }
 
   await updateImportJobProgress(job._id as ObjectId, {
@@ -187,9 +203,9 @@ async function processAudioJob(job: LevelImportJobDocument, sourceAsset: AssetDo
     status: "processing",
   });
   const preprocessed = await runAudioPreprocessWorker({
-    inputAbsolutePath: selectedAudioPath,
+    inputAbsolutePath: analysisAudioPath,
   });
-  warnings.push(...preprocessed.warnings);
+  warnings.push(...mapStageWarnings("Audio preprocessing", preprocessed.warnings));
 
   await updateImportJobProgress(job._id as ObjectId, {
     stage: "transcribing",
@@ -200,8 +216,9 @@ async function processAudioJob(job: LevelImportJobDocument, sourceAsset: AssetDo
   const transcription = await transcriber.transcribe({
     wavAbsolutePath: preprocessed.wavAbsolutePath,
     preset: job.params.instrumentPreset,
+    tuning: job.params.transcriptionTuning ?? "balanced",
   });
-  warnings.push(...transcription.warnings);
+  warnings.push(...mapStageWarnings("Transcription", transcription.warnings));
 
   await updateImportJobProgress(job._id as ObjectId, {
     stage: "cleanup",
@@ -213,7 +230,7 @@ async function processAudioJob(job: LevelImportJobDocument, sourceAsset: AssetDo
     preset: job.params.instrumentPreset,
     simplifyMonophonic: true,
   });
-  warnings.push(...cleaned.warnings);
+  warnings.push(...mapStageWarnings("Cleanup", cleaned.warnings));
 
   await updateImportJobProgress(job._id as ObjectId, {
     stage: "beat_tracking",
@@ -224,7 +241,7 @@ async function processAudioJob(job: LevelImportJobDocument, sourceAsset: AssetDo
     events: cleaned.events,
     manualBpm: job.params.manualBpm,
   });
-  warnings.push(...beatTracking.warnings);
+  warnings.push(...mapStageWarnings("Beat tracking", beatTracking.warnings));
 
   await updateImportJobProgress(job._id as ObjectId, {
     stage: "quantization",
@@ -236,12 +253,18 @@ async function processAudioJob(job: LevelImportJobDocument, sourceAsset: AssetDo
     quantization: job.params.quantization,
     bpm: beatTracking.bpm,
   });
-  warnings.push(...quantized.warnings);
+  warnings.push(...mapStageWarnings("Quantization", quantized.warnings));
 
   const chart: LevelChart = {
     id: levelId,
     title: job.params.title,
-    audioUrl: selectedAudioUrl,
+    audioUrl: fullMixAudioUrl,
+    fullMixAudioUrl,
+    analysisAudioUrl,
+    stemAudioUrl,
+    analysisStem,
+    analysisToPlaybackOffsetMs: 0,
+    analysisFirstActivityMs: transcription.analysisFirstActivityMs,
     offsetMs: 0,
     bpmHint: beatTracking.bpm,
     events: quantized.events,

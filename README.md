@@ -26,11 +26,11 @@ Open: `http://localhost:3000`
 Notes:
 - This keeps your existing workflow unchanged.
 - MIDI import works without ffmpeg/ffprobe.
-- If audio import is selected and ffmpeg is unavailable on the backend runtime, the app shows a server-side capability warning.
+- If audio import is selected and required backend tools are unavailable on the server runtime, the app shows a server-side capability warning.
 
 ### 2) Local dev with audio import via Docker (recommended)
 
-Use this when you need audio import. This Docker backend includes `ffmpeg` and `ffprobe` preinstalled.
+Use this when you need audio import. This Docker backend includes `ffmpeg`/`ffprobe`, Python + pip, `demucs`, and `basic-pitch` preinstalled.
 
 ```bash
 docker compose up --build audio-import-backend
@@ -39,6 +39,8 @@ docker compose up --build audio-import-backend
 Open: `http://localhost:3001`
 
 This container runs the backend + in-process import worker with audio tooling available.
+No manual install of transcription dependencies is required for teammates/end users when using this Docker workflow.
+At startup, the container pre-warms the configured Demucs model and reuses checkpoints from a persistent Docker volume (`TORCH_HOME=/opt/torch-cache`).
 
 Stop it with:
 
@@ -52,5 +54,9 @@ docker compose down
 - For Docker backend DB access, `MONGODB_URI` defaults to:
   - `mongodb://host.docker.internal:27017/guitar-game`
 - You can override by setting `DOCKER_MONGODB_URI` before startup.
+- Demucs runtime defaults:
+  - `DEMUCS_MODEL=htdemucs`
+  - `TORCH_HOME=/opt/torch-cache` (persisted by `demucs_torch_cache` volume)
+  - `PREWARM_DEMUCS_MODEL=1` (set `0` to skip startup prewarm)
 
 

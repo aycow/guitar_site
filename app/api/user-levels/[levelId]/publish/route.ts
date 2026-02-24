@@ -38,7 +38,7 @@ export async function POST(
       );
     }
 
-    if (!draftVersion.chart.audioUrl) {
+    if (!draftVersion.chart.audioUrl && !draftVersion.chart.fullMixAudioUrl && !draftVersion.chart.analysisAudioUrl) {
       return NextResponse.json<PublishLevelResponse>(
         { ok: false, message: "Publish requires an audio track URL." },
         { status: 400 },

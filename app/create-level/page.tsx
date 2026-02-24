@@ -12,6 +12,7 @@ import type {
   LevelImportSourceType,
   LevelQuantization,
   StemTarget,
+  TranscriptionTuning,
 } from "@/types/level-import";
 
 type UploadedAsset = NonNullable<CreateAssetResponse["asset"]>;
@@ -27,18 +28,27 @@ const SOURCE_OPTIONS: Array<{ value: LevelImportSourceType; label: string; hint:
   {
     value: "isolated_audio",
     label: "Isolated Audio",
-    hint: "Phase 2 path (placeholder transcriber ready)",
+    hint: "Basic Pitch transcription pipeline",
   },
   {
     value: "full_mix_audio",
     label: "Full Mix Audio",
-    hint: "Phase 3 path (stem separation scaffold)",
+    hint: "Demucs stem separation + Basic Pitch",
   },
 ];
 
 const QUANTIZATION_OPTIONS: LevelQuantization[] = ["off", "1/8", "1/16"];
 const INSTRUMENT_PRESETS: InstrumentPreset[] = ["guitar", "bass"];
 const STEM_OPTIONS: StemTarget[] = ["guitar", "bass", "vocals", "drums", "other"];
+const TRANSCRIPTION_TUNING_OPTIONS: Array<{
+  value: TranscriptionTuning;
+  label: string;
+  hint: string;
+}> = [
+  { value: "balanced", label: "Balanced", hint: "Recommended default: moderate filtering and intro gate." },
+  { value: "conservative", label: "Conservative", hint: "Stricter filtering for cleaner but sparser note output." },
+  { value: "sensitive", label: "Sensitive", hint: "Captures more subtle notes; may include extra noise." },
+];
 const AUDIO_EXTENSIONS = [".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac", ".webm"];
 
 function isMidiFile(file: File) {
@@ -93,6 +103,7 @@ export default function CreateLevelPage() {
   const [manualBpm, setManualBpm] = useState<string>("");
   const [quantization, setQuantization] = useState<LevelQuantization>("off");
   const [instrumentPreset, setInstrumentPreset] = useState<InstrumentPreset>("guitar");
+  const [transcriptionTuning, setTranscriptionTuning] = useState<TranscriptionTuning>("balanced");
   const [selectedStem, setSelectedStem] = useState<StemTarget>("guitar");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -301,6 +312,7 @@ export default function CreateLevelPage() {
           manualBpm: manualBpm ? Number(manualBpm) : undefined,
           quantization,
           instrumentPreset,
+          transcriptionTuning,
           selectedStem,
         }),
       });
@@ -445,6 +457,24 @@ export default function CreateLevelPage() {
               ))}
             </select>
           </div>
+        </div>
+
+        <div className={styles.formRow}>
+          <label htmlFor="transcription-tuning">Transcription tuning</label>
+          <select
+            id="transcription-tuning"
+            value={transcriptionTuning}
+            onChange={(event) => setTranscriptionTuning(event.target.value as TranscriptionTuning)}
+          >
+            {TRANSCRIPTION_TUNING_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <p className={styles.helperText}>
+            {TRANSCRIPTION_TUNING_OPTIONS.find((option) => option.value === transcriptionTuning)?.hint}
+          </p>
         </div>
 
         {sourceType === "full_mix_audio" && (

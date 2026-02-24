@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./page.module.css";
 import type { LevelChart, LevelQuantization, SaveDraftResponse, UserLevelDraftResponse } from "@/types/level-import";
 
 type EditableLevel = NonNullable<UserLevelDraftResponse["level"]>;
+type PlaybackSource = "full_mix" | "analysis";
 
 function applyQuantization(chart: LevelChart, setting: LevelQuantization): LevelChart {
   if (setting === "off" || !chart.bpmHint || chart.bpmHint <= 0) {
@@ -23,6 +24,31 @@ function applyQuantization(chart: LevelChart, setting: LevelQuantization): Level
       durationMs: Math.max(1, Math.round(Math.round(event.durationMs / stepMs) * stepMs)),
     })),
   };
+}
+
+function resolvePlaybackUrls(chart: LevelChart) {
+  const fullMixAudioUrl = chart.fullMixAudioUrl ?? chart.audioUrl;
+  const analysisAudioUrl = chart.analysisAudioUrl ?? chart.stemAudioUrl ?? chart.audioUrl;
+  return {
+    fullMixAudioUrl: fullMixAudioUrl || "",
+    analysisAudioUrl: analysisAudioUrl || "",
+  };
+}
+
+function toAnalysisTimelineMs(playbackMs: number, source: PlaybackSource, chart: LevelChart) {
+  const offset = chart.analysisToPlaybackOffsetMs ?? 0;
+  if (source === "full_mix") {
+    return playbackMs + offset;
+  }
+  return playbackMs;
+}
+
+function fromAnalysisTimelineMs(analysisMs: number, source: PlaybackSource, chart: LevelChart) {
+  const offset = chart.analysisToPlaybackOffsetMs ?? 0;
+  if (source === "full_mix") {
+    return analysisMs - offset;
+  }
+  return analysisMs;
 }
 
 export default function LevelDraftEditorPage({
@@ -43,8 +69,43 @@ export default function LevelDraftEditorPage({
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDurationMs, setAudioDurationMs] = useState(0);
   const [audioCurrentMs, setAudioCurrentMs] = useState(0);
+  const [playbackSource, setPlaybackSource] = useState<PlaybackSource>("full_mix");
   const [quantization, setQuantization] = useState<LevelQuantization>("off");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const pendingSeekMsRef = useRef<number | null>(null);
+  const pendingResumeRef = useRef(false);
+
+  const stopPlayback = useCallback(
+    (options?: { resetTime?: boolean; clearSource?: boolean; updateState?: boolean }) => {
+      const audio = audioRef.current;
+      const resetTime = options?.resetTime ?? true;
+      const clearSource = options?.clearSource ?? false;
+      const updateState = options?.updateState ?? true;
+
+      if (audio) {
+        audio.pause();
+        if (resetTime) {
+          audio.currentTime = 0;
+        }
+        if (clearSource) {
+          audio.removeAttribute("src");
+          audio.load();
+        }
+      }
+
+      pendingResumeRef.current = false;
+      if (updateState) {
+        setIsPlaying(false);
+      }
+      if (resetTime) {
+        setAudioCurrentMs(0);
+      }
+      if (clearSource) {
+        setAudioDurationMs(0);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void (async () => {
@@ -78,10 +139,77 @@ export default function LevelDraftEditorPage({
   }, [resolvedLevelId]);
 
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    if (!chart) {
+      return;
+    }
+    const urls = resolvePlaybackUrls(chart);
+    if (urls.fullMixAudioUrl) {
+      setPlaybackSource("full_mix");
+    } else if (urls.analysisAudioUrl) {
+      setPlaybackSource("analysis");
+    }
+  }, [chart]);
 
-    const onLoaded = () => setAudioDurationMs(Number.isFinite(audio.duration) ? Math.round(audio.duration * 1000) : 0);
+  useEffect(() => {
+    const handlePageHide = () => {
+      stopPlayback({ resetTime: true, updateState: true });
+    };
+    const handlePopState = () => {
+      stopPlayback({ resetTime: true, updateState: true });
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPlayback({ resetTime: false, updateState: true });
+      }
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("popstate", handlePopState);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("popstate", handlePopState);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [stopPlayback]);
+
+  const playbackUrls = useMemo(() => {
+    if (!chart) {
+      return { fullMixAudioUrl: "", analysisAudioUrl: "", activePlaybackUrl: "" };
+    }
+
+    const urls = resolvePlaybackUrls(chart);
+    const activePlaybackUrl = playbackSource === "analysis"
+      ? (urls.analysisAudioUrl || urls.fullMixAudioUrl)
+      : (urls.fullMixAudioUrl || urls.analysisAudioUrl);
+
+    return {
+      ...urls,
+      activePlaybackUrl,
+    };
+  }, [chart, playbackSource]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !playbackUrls.activePlaybackUrl) return;
+
+    const onLoaded = () => {
+      setAudioDurationMs(Number.isFinite(audio.duration) ? Math.round(audio.duration * 1000) : 0);
+      const pendingSeekMs = pendingSeekMsRef.current;
+      if (pendingSeekMs !== null) {
+        const seekSec = Math.max(0, pendingSeekMs) / 1000;
+        audio.currentTime = Number.isFinite(audio.duration)
+          ? Math.min(seekSec, Math.max(0, audio.duration))
+          : seekSec;
+        setAudioCurrentMs(Math.round(audio.currentTime * 1000));
+        pendingSeekMsRef.current = null;
+      }
+      if (pendingResumeRef.current) {
+        pendingResumeRef.current = false;
+        void audio.play().catch(() => {});
+      }
+    };
     const onTime = () => setAudioCurrentMs(Math.round(audio.currentTime * 1000));
     const onPause = () => setIsPlaying(false);
     const onPlay = () => setIsPlaying(true);
@@ -98,12 +226,44 @@ export default function LevelDraftEditorPage({
       audio.removeEventListener("play", onPlay);
       audio.removeEventListener("ended", onPause);
     };
-  }, [chart?.audioUrl]);
+  }, [playbackUrls.activePlaybackUrl]);
+
+  useEffect(() => {
+    return () => {
+      stopPlayback({ resetTime: true, clearSource: true, updateState: false });
+    };
+  }, [stopPlayback]);
 
   const selectedEvent = useMemo(() => {
     if (!chart || selectedIndex === null) return null;
     return chart.events[selectedIndex] ?? null;
   }, [chart, selectedIndex]);
+
+  const playbackStatusWarnings = useMemo(() => {
+    if (!chart) {
+      return [];
+    }
+    const warnings: string[] = [];
+    const urls = resolvePlaybackUrls(chart);
+    if (!urls.fullMixAudioUrl && urls.analysisAudioUrl) {
+      warnings.push("Full mix playback is unavailable. Analysis audio is being used for playback.");
+    }
+    if (
+      chart.analysisStem &&
+      chart.analysisAudioUrl &&
+      urls.fullMixAudioUrl &&
+      chart.analysisAudioUrl === urls.fullMixAudioUrl
+    ) {
+      warnings.push(`"${chart.analysisStem}" stem was unavailable, so analysis fell back to full mix audio.`);
+    }
+    if ((chart.analysisToPlaybackOffsetMs ?? 0) !== 0) {
+      warnings.push(`Playback alignment offset: ${chart.analysisToPlaybackOffsetMs}ms (analysis vs full mix).`);
+    }
+    if (chart.analysisFirstActivityMs !== undefined) {
+      warnings.push(`Analysis first activity detected at ${chart.analysisFirstActivityMs}ms.`);
+    }
+    return warnings;
+  }, [chart]);
 
   function updateEvent(index: number, updater: (current: LevelChart["events"][number]) => LevelChart["events"][number]) {
     setChart((current) => {
@@ -188,6 +348,33 @@ export default function LevelDraftEditorPage({
     } else {
       audio.pause();
     }
+  }
+
+  function switchPlaybackSource(nextSource: PlaybackSource) {
+    if (!chart || nextSource === playbackSource) {
+      return;
+    }
+
+    const nextSourceUrl = nextSource === "analysis"
+      ? playbackUrls.analysisAudioUrl
+      : playbackUrls.fullMixAudioUrl;
+    if (!nextSourceUrl) {
+      return;
+    }
+
+    const audio = audioRef.current;
+    const wasPlaying = Boolean(audio && !audio.paused);
+    const currentPlaybackMs = audio ? Math.round(audio.currentTime * 1000) : audioCurrentMs;
+    const analysisTimelineMs = toAnalysisTimelineMs(currentPlaybackMs, playbackSource, chart);
+    const nextPlaybackMs = Math.max(0, Math.round(fromAnalysisTimelineMs(analysisTimelineMs, nextSource, chart)));
+
+    if (audio) {
+      audio.pause();
+    }
+    pendingSeekMsRef.current = nextPlaybackMs;
+    pendingResumeRef.current = wasPlaying;
+    setAudioCurrentMs(nextPlaybackMs);
+    setPlaybackSource(nextSource);
   }
 
   if (loading) {
@@ -293,9 +480,35 @@ export default function LevelDraftEditorPage({
 
       <section className={styles.panel}>
         <h2>Audio Preview</h2>
-        {chart.audioUrl ? (
+        {playbackUrls.activePlaybackUrl ? (
           <>
-            <audio ref={audioRef} src={chart.audioUrl} preload="metadata" />
+            <div className={styles.inlineActions}>
+              <span>Playback source:</span>
+              <button
+                type="button"
+                onClick={() => switchPlaybackSource("full_mix")}
+                disabled={!playbackUrls.fullMixAudioUrl}
+                className={playbackSource === "full_mix" ? styles.sourceToggleActive : styles.sourceToggle}
+              >
+                Full Mix
+              </button>
+              <button
+                type="button"
+                onClick={() => switchPlaybackSource("analysis")}
+                disabled={!playbackUrls.analysisAudioUrl}
+                className={playbackSource === "analysis" ? styles.sourceToggleActive : styles.sourceToggle}
+              >
+                Isolated Stem {chart.analysisStem ? `(${chart.analysisStem})` : ""}
+              </button>
+            </div>
+            {playbackStatusWarnings.length > 0 && (
+              <ul className={styles.warningList}>
+                {playbackStatusWarnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            )}
+            <audio ref={audioRef} src={playbackUrls.activePlaybackUrl} preload="metadata" />
             <div className={styles.inlineActions}>
               <button type="button" onClick={() => void toggleAudioPlayback()}>
                 {isPlaying ? "Pause" : "Play"}

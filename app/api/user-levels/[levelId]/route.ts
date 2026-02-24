@@ -47,7 +47,7 @@ export async function GET(
         sourceType: level.sourceType,
         chart: version.chart,
         versionNumber: version.versionNumber,
-        canPublish: !!version.chart.audioUrl,
+        canPublish: !!(version.chart.audioUrl || version.chart.fullMixAudioUrl || version.chart.analysisAudioUrl),
       },
     });
   } catch (error) {

@@ -2,6 +2,7 @@ import { ObjectId } from "mongodb";
 import {
   LEVEL_IMPORT_JOB_STATUSES,
   LEVEL_IMPORT_STAGES,
+  TRANSCRIPTION_TUNINGS,
   type CreateImportJobRequest,
   type LevelImportJobDocument,
   type LevelImportJobResult,
@@ -40,6 +41,8 @@ export async function createImportJob(ownerUserId: string, request: CreateImport
 
   const sourceAssetId = toObjectId(request.sourceAssetId, "sourceAssetId");
   const audioAssetId = request.audioAssetId ? toObjectId(request.audioAssetId, "audioAssetId") : undefined;
+  const transcriptionTuning = request.transcriptionTuning ?? "balanced";
+  assertEnumValue(TRANSCRIPTION_TUNINGS, transcriptionTuning, "transcriptionTuning");
 
   const sourceAsset = await assets.findOne({ _id: sourceAssetId, ownerUserId });
   if (!sourceAsset) {
@@ -93,6 +96,7 @@ export async function createImportJob(ownerUserId: string, request: CreateImport
       manualBpm: request.manualBpm,
       quantization: request.quantization ?? "off",
       instrumentPreset: request.instrumentPreset ?? "guitar",
+      transcriptionTuning,
       selectedStem: request.selectedStem ?? "guitar",
       sourceType: resolvedSourceType,
       sourceAssetId: request.sourceAssetId,

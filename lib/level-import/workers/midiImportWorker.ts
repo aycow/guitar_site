@@ -96,6 +96,7 @@ export async function runMidiImportWorker(input: MidiImportWorkerInput): Promise
     id: input.levelId,
     title: input.title,
     audioUrl: input.audioUrl,
+    fullMixAudioUrl: input.audioUrl || undefined,
     offsetMs: 0,
     bpmHint,
     events,

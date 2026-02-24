@@ -1,13 +1,15 @@
-import type { ChartEvent, InstrumentPreset } from "@/types/level-import";
+import type { ChartEvent, InstrumentPreset, TranscriptionTuning } from "@/types/level-import";
 
 export interface TranscriberInput {
   wavAbsolutePath: string;
   preset: InstrumentPreset;
+  tuning: TranscriptionTuning;
 }
 
 export interface TranscriberOutput {
   events: ChartEvent[];
   warnings: string[];
+  analysisFirstActivityMs?: number;
 }
 
 export interface AudioTranscriber {

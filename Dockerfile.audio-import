@@ -1,7 +1,16 @@
 FROM node:20-bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+  && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    python3 \
+    python3-pip \
+    python3-venv \
+    ca-certificates \
+  && python3 -m venv /opt/audio-runtime \
+  && /opt/audio-runtime/bin/pip install --no-cache-dir --upgrade pip \
+  && /opt/audio-runtime/bin/pip install --no-cache-dir demucs basic-pitch \
+  && mkdir -p /opt/torch-cache \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -14,8 +23,12 @@ COPY . .
 ENV NODE_ENV=development
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV CHOKIDAR_USEPOLLING=1
+ENV PATH="/opt/audio-runtime/bin:${PATH}"
+ENV TORCH_HOME="/opt/torch-cache"
+ENV DEMUCS_MODEL="htdemucs"
+ENV PREWARM_DEMUCS_MODEL="1"
 
 EXPOSE 3000
 
 # The level import queue worker runs in-process with the backend runtime.
-CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
+CMD ["sh", "./scripts/audio-import-entrypoint.sh"]

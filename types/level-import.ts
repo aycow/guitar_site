@@ -35,6 +35,9 @@ export type LevelQuantization = (typeof LEVEL_QUANTIZATION_VALUES)[number];
 export const INSTRUMENT_PRESETS = ["guitar", "bass"] as const;
 export type InstrumentPreset = (typeof INSTRUMENT_PRESETS)[number];
 
+export const TRANSCRIPTION_TUNINGS = ["conservative", "balanced", "sensitive"] as const;
+export type TranscriptionTuning = (typeof TRANSCRIPTION_TUNINGS)[number];
+
 export const STEM_TARGETS = ["guitar", "bass", "vocals", "drums", "other"] as const;
 export type StemTarget = (typeof STEM_TARGETS)[number];
 export type DetectedSourceKind = "midi" | "audio" | "unknown";
@@ -52,6 +55,12 @@ export interface LevelChart {
   id: string;
   title: string;
   audioUrl: string;
+  fullMixAudioUrl?: string;
+  analysisAudioUrl?: string;
+  stemAudioUrl?: string;
+  analysisStem?: StemTarget;
+  analysisToPlaybackOffsetMs?: number;
+  analysisFirstActivityMs?: number;
   offsetMs: number;
   bpmHint: number | null;
   events: ChartEvent[];
@@ -120,6 +129,7 @@ export interface LevelImportJobParams {
   manualBpm?: number;
   quantization: LevelQuantization;
   instrumentPreset: InstrumentPreset;
+  transcriptionTuning: TranscriptionTuning;
   selectedStem: StemTarget;
   sourceType: LevelImportSourceType;
   audioAssetId?: string;
@@ -184,6 +194,7 @@ export interface CreateImportJobRequest {
   manualBpm?: number;
   quantization?: LevelQuantization;
   instrumentPreset?: InstrumentPreset;
+  transcriptionTuning?: TranscriptionTuning;
   selectedStem?: StemTarget;
 }
 

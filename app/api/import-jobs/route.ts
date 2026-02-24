@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   LEVEL_IMPORT_SOURCE_TYPES,
+  TRANSCRIPTION_TUNINGS,
   type CreateImportJobRequest,
   type CreateImportJobResponse,
 } from "@/types/level-import";
@@ -16,6 +17,10 @@ function isSourceType(value: string): value is (typeof LEVEL_IMPORT_SOURCE_TYPES
   return LEVEL_IMPORT_SOURCE_TYPES.includes(value as (typeof LEVEL_IMPORT_SOURCE_TYPES)[number]);
 }
 
+function isTranscriptionTuning(value: string): value is (typeof TRANSCRIPTION_TUNINGS)[number] {
+  return TRANSCRIPTION_TUNINGS.includes(value as (typeof TRANSCRIPTION_TUNINGS)[number]);
+}
+
 export async function POST(request: Request) {
   try {
     const { userId } = await requireUserSession();
@@ -24,6 +29,12 @@ export async function POST(request: Request) {
     if (body.sourceType && !isSourceType(body.sourceType)) {
       return NextResponse.json<CreateImportJobResponse>(
         { ok: false, message: "Invalid source type." },
+        { status: 400 },
+      );
+    }
+    if (body.transcriptionTuning && !isTranscriptionTuning(body.transcriptionTuning)) {
+      return NextResponse.json<CreateImportJobResponse>(
+        { ok: false, message: "Invalid transcription tuning option." },
         { status: 400 },
       );
     }

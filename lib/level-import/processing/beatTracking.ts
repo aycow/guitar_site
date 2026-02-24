@@ -12,6 +12,10 @@ export interface BeatTrackingOutput {
   warnings: string[];
 }
 
+function formatConfidence(confidence: number) {
+  return `${Math.round(confidence * 100)}%`;
+}
+
 function median(values: number[]) {
   if (values.length === 0) {
     return 0;
@@ -69,7 +73,9 @@ export function runBeatTracking(input: BeatTrackingInput): BeatTrackingOutput {
   }
 
   if (input.manualBpm && input.manualBpm > 0) {
-    warnings.push("Automatic beat tracking was weak. Manual BPM was applied.");
+    warnings.push(
+      `Automatic beat tracking confidence was ${formatConfidence(detected.confidence)}. Manual BPM (${input.manualBpm}) was applied.`,
+    );
     return {
       bpm: input.manualBpm,
       confidence: detected.confidence,
@@ -78,7 +84,9 @@ export function runBeatTracking(input: BeatTrackingInput): BeatTrackingOutput {
     };
   }
 
-  warnings.push("Beat tracking confidence was low and no manual BPM was provided.");
+  warnings.push(
+    `Beat tracking confidence was ${formatConfidence(detected.confidence)} and no manual BPM was provided.`,
+  );
   return {
     bpm: detected.bpm,
     confidence: detected.confidence,

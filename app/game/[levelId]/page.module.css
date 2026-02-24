@@ -136,3 +136,15 @@
   font-size: 11px;
   color: #4b5563;
 }
+
+.playbackNotice {
+  background: #312e0f;
+  border: 1px solid #a16207;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  color: #fef3c7;
+  font-size: 12px;
+  display: grid;
+  gap: 4px;
+}
