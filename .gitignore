@@ -41,4 +41,5 @@ yarn-error.log*
 next-env.d.ts
 
 # Runtime-generated upload/import artifacts
-public/uploads/
+public/uploads/public/models/telecaster/telecaster.bin
+public/models/telecaster/telecaster.bin
