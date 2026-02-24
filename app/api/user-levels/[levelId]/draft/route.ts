@@ -69,6 +69,20 @@ export async function PUT(
         timeMs: Math.max(0, Math.round(event.timeMs)),
         durationMs: Math.max(1, Math.round(event.durationMs)),
         notes: [...new Set(event.notes.map((note) => Math.round(note)).filter((note) => note >= 0 && note <= 127))],
+        tab: Array.isArray(event.tab)
+          ? event.tab
+              .map((position) => ({
+                string: Math.round(Number(position?.string)),
+                fret: Math.round(Number(position?.fret)),
+              }))
+              .filter(
+                (position) =>
+                  Number.isFinite(position.string) &&
+                  Number.isFinite(position.fret) &&
+                  position.string >= 1 &&
+                  position.fret >= 0,
+              )
+          : undefined,
         velocity: event.velocity,
         confidence: event.confidence,
       })),

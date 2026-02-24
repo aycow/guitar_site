@@ -5,14 +5,27 @@ import React, { use, useCallback, useEffect, useMemo, useRef, useState } from "r
 import styles from "./page.module.css";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { computePreviewWindow } from "./preview/window";
+import {
+  computeTabAssignments,
+  mappingPolicyLabel,
+  resolveInstrumentProfile,
+} from "./preview/tabMapping";
+import type {
+  ComputedTabEvent,
+  InstrumentOverride,
+  InstrumentProfile,
+  MappingPolicy,
+} from "./preview/types";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ChartEvent = {
   timeMs: number;
   durationMs: number;
   notes: number[];
   velocity?: number;
+  tab?: { string: number; fret: number }[];
   _scored?: boolean;
 };
 
@@ -28,12 +41,19 @@ type Chart = {
   analysisFirstActivityMs?: number;
   offsetMs: number;
   bpmHint?: number | null;
+  instrument?: {
+    type?: string;
+    tuning?: number[];
+    maxFret?: number;
+    strings?: number;
+  };
   events: ChartEvent[];
 };
 
 type PlaybackSource = "full_mix" | "analysis";
 
 type NoteResult = "HIT" | "MISS";
+type PreviewMode = "tab" | "staff" | "grid" | "off";
 
 type ScoredNote = {
   event: ChartEvent;
@@ -41,7 +61,7 @@ type ScoredNote = {
   detectedHz?: number;
 };
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const HIT_WINDOW_MS        = 150;
 const SUSTAIN_EXTEND_MS    = 0;
@@ -51,7 +71,7 @@ const PITCH_HISTORY_SIZE   = 7;
 const PITCH_POLL_MS        = 33;
 const UI_POLL_MS           = 50;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function midiToHz(midi: number) {
   return 440 * Math.pow(2, (midi - 69) / 12);
@@ -169,7 +189,39 @@ function fromAnalysisTimelineMs(analysisMs: number, source: PlaybackSource, char
   return analysisMs;
 }
 
-// ─── Results Screen ───────────────────────────────────────────────────────────
+function clampNumber(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function lowerBoundEventIndex(events: ChartEvent[], targetMs: number) {
+  let lo = 0;
+  let hi = events.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (events[mid].timeMs < targetMs) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function getVisibleEventsInWindow<T extends ChartEvent>(
+  events: T[],
+  startMs: number,
+  endMs: number,
+  cap = 96,
+) {
+  const startIdx = lowerBoundEventIndex(events, startMs);
+  const out: T[] = [];
+  for (let i = startIdx; i < events.length; i++) {
+    const ev = events[i];
+    if (ev.timeMs > endMs) break;
+    out.push(ev);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+// â”€â”€â”€ Results Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ResultsScreen({
   chart,
@@ -252,7 +304,7 @@ function ResultsScreen({
               {score.toLocaleString()}
             </div>
             <div style={{ fontSize: 12, color: "#4b5563", marginTop: 4 }}>
-              MAX COMBO <span style={{ color: "#60a5fa" }}>×{maxCombo}</span>
+              MAX COMBO <span style={{ color: "#60a5fa" }}>Ã—{maxCombo}</span>
             </div>
           </div>
         </div>
@@ -323,7 +375,7 @@ function ResultsScreen({
               letterSpacing: 2,
             }}
           >
-            ↺ PLAY AGAIN
+            â†º PLAY AGAIN
           </button>
           <Link href="/" style={{
             ...btnStyle("#374151"),
@@ -331,7 +383,7 @@ function ResultsScreen({
             letterSpacing: 2, textDecoration: "none",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            ← SONG SELECT
+            â† SONG SELECT
           </Link>
         </div>
       </div>
@@ -349,76 +401,21 @@ function MeasurePreview({
   windowMeasures?: number;
   beatsPerMeasure?: number;
 }) {
-  const bpm = chart.bpmHint ?? null;
-
-  // Compute the visible window in ms.
-  const { startMs, endMs, windowMs, beatMs, measureMs, measureStartIndex } = useMemo(() => {
-    if (!bpm || bpm <= 0) {
-      // Fallback: just show next 4 seconds if BPM is unknown
-      const start = songTimeMs;
-      const win = 4000;
-      return {
-        startMs: start,
-        endMs: start + win,
-        windowMs: win,
-        beatMs: null as number | null,
-        measureMs: null as number | null,
-        measureStartIndex: null as number | null,
-      };
-    }
-
-    const beat = 60000 / bpm;
-    const measure = beatsPerMeasure * beat;
-
-    // Snap start to the beginning of the current measure
-    const start = Math.floor(songTimeMs / measure) * measure;
-    const win = windowMeasures * measure;
-
-    return {
-      startMs: start,
-      endMs: start + win,
-      windowMs: win,
-      beatMs: beat,
-      measureMs: measure,
-      measureStartIndex: Math.floor(start / measure),
-    };
-  }, [bpm, beatsPerMeasure, songTimeMs, windowMeasures]);
+  const { bpm, startMs, endMs, windowMs, measureStartIndex, nowPct, ticks } = useMemo(
+    () =>
+      computePreviewWindow({
+        bpmHint: chart.bpmHint,
+        songTimeMs,
+        beatsPerMeasure,
+        windowMeasures,
+      }),
+    [chart.bpmHint, songTimeMs, beatsPerMeasure, windowMeasures],
+  );
 
   // Grab events that fall inside the preview window
   const visibleEvents = useMemo(() => {
-    const evs = chart.events.filter((e) => e.timeMs >= startMs && e.timeMs <= endMs);
-    // Cap to avoid rendering hundreds of DOM nodes if charts get dense
-    return evs.slice(0, 96);
+    return getVisibleEventsInWindow(chart.events, startMs, endMs, 96);
   }, [chart.events, startMs, endMs]);
-
-  // "Now" playhead position (0..100%)
-  const nowPct = useMemo(() => {
-    const p = ((songTimeMs - startMs) / windowMs) * 100;
-    return Math.max(0, Math.min(100, p));
-  }, [songTimeMs, startMs, windowMs]);
-
-  // Build beat/measures tick marks
-  const ticks = useMemo(() => {
-    if (!beatMs) {
-      // Fallback: ticks every 500ms
-      const step = 500;
-      const out: { pct: number; strong: boolean }[] = [];
-      for (let t = startMs; t <= endMs; t += step) {
-        out.push({ pct: ((t - startMs) / windowMs) * 100, strong: (t - startMs) % 2000 === 0 });
-      }
-      return out;
-    }
-
-    const out: { pct: number; strong: boolean }[] = [];
-    const totalBeats = Math.ceil(windowMs / beatMs);
-    for (let i = 0; i <= totalBeats; i++) {
-      const t = startMs + i * beatMs;
-      const pct = ((t - startMs) / windowMs) * 100;
-      const strong = (i % beatsPerMeasure) === 0; // measure boundary
-      out.push({ pct, strong });
-    }
-    return out;
-  }, [beatMs, beatsPerMeasure, endMs, startMs, windowMs]);
 
   return (
     <div
@@ -436,8 +433,8 @@ function MeasurePreview({
         </div>
         <div style={{ fontSize: 11, color: "#4b5563" }}>
           {bpm
-            ? `Measure ${((measureStartIndex ?? 0) + 1)} → ${((measureStartIndex ?? 0) + windowMeasures)} · ${Math.round(bpm)} BPM`
-            : "BPM unknown · showing next 4s"}
+            ? `Measure ${((measureStartIndex ?? 0) + 1)} â†’ ${((measureStartIndex ?? 0) + windowMeasures)} Â· ${Math.round(bpm)} BPM`
+            : "BPM unknown Â· showing 4s window"}
         </div>
       </div>
 
@@ -572,7 +569,274 @@ function MeasurePreview({
       </div>
 
       <div style={{ fontSize: 11, color: "#4b5563", marginTop: 8 }}>
-        Tip: if the grid feels "off", make sure your chart JSON has a reasonable <code>bpmHint</code>.
+        Tip: if the grid feels &quot;off&quot;, make sure your chart JSON has a reasonable <code>bpmHint</code>.
+      </div>
+    </div>
+  );
+}
+
+
+function TabPreview({
+  events,
+  bpmHint,
+  songTimeMs,
+  instrumentProfile,
+  mappingPolicy,
+  unresolvedVisibleCount,
+  windowMeasures = 2,
+  beatsPerMeasure = 4,
+}: {
+  events: ComputedTabEvent[];
+  bpmHint?: number | null;
+  songTimeMs: number;
+  instrumentProfile: InstrumentProfile;
+  mappingPolicy: MappingPolicy;
+  unresolvedVisibleCount: number;
+  windowMeasures?: number;
+  beatsPerMeasure?: number;
+}) {
+  const { bpm, startMs, endMs, windowMs, measureStartIndex, nowPct, ticks } = useMemo(
+    () =>
+      computePreviewWindow({
+        bpmHint,
+        songTimeMs,
+        beatsPerMeasure,
+        windowMeasures,
+      }),
+    [bpmHint, songTimeMs, beatsPerMeasure, windowMeasures],
+  );
+
+  const visibleEvents = useMemo(
+    () => getVisibleEventsInWindow(events, startMs, endMs, 96),
+    [events, startMs, endMs],
+  );
+  const policyLabel = mappingPolicyLabel(mappingPolicy);
+  const tuningLabel = instrumentProfile.displayStrings.join("");
+
+  const stringCount = instrumentProfile.tuning.length;
+  const rowGap = stringCount <= 4 ? 28 : 22;
+  const lineTop = 42;
+  const lineBottom = lineTop + (stringCount - 1) * rowGap;
+  const plotTop = 16;
+  const plotBottom = lineBottom + 18;
+  const svgWidth = 1040;
+  const svgHeight = plotBottom + 26;
+  const leftPad = 68;
+  const rightPad = 22;
+  const plotWidth = svgWidth - leftPad - rightPad;
+  const nowX = leftPad + (nowPct / 100) * plotWidth;
+
+  const stringYs = useMemo(
+    () => Array.from({ length: stringCount }, (_, idx) => lineTop + idx * rowGap),
+    [lineTop, rowGap, stringCount],
+  );
+
+  const noteLayers = useMemo(() => {
+    const sustains: React.ReactNode[] = [];
+    const chips: React.ReactNode[] = [];
+
+    visibleEvents.forEach((event, eventIndex) => {
+      const onsetPct = clampNumber((event.timeMs - startMs) / windowMs, 0, 1);
+      const x = leftPad + onsetPct * plotWidth;
+      const sustainWidth =
+        event.durationMs > 0
+          ? clampNumber((event.durationMs / windowMs) * plotWidth, 0, plotWidth - (x - leftPad))
+          : 0;
+      const resolved =
+        event.resolvedTab && event.resolvedTab.length > 0
+          ? event.resolvedTab
+          : event.notes.map((midi) => ({ midi, string: 1, fret: 0, unresolved: true }));
+
+      resolved.forEach((tabNote, noteIndex) => {
+        const unresolved =
+          !!tabNote.unresolved ||
+          tabNote.string < 1 ||
+          tabNote.string > stringCount ||
+          tabNote.fret < 0 ||
+          tabNote.fret > instrumentProfile.maxFret;
+
+        const y = unresolved
+          ? lineTop - 16 - (noteIndex % 3) * 14
+          : stringYs[tabNote.string - 1];
+        const label = unresolved ? "?" : `${tabNote.fret}`;
+        const chipW = clampNumber(14 + label.length * 7, 16, 36);
+        const chipH = 16;
+        const chipX = x - chipW / 2 + ((noteIndex % 2 === 0) ? -1.5 : 1.5);
+        const chipY = y - chipH / 2;
+        const candidateLabel = tabNote.candidates
+          ? tabNote.candidates.map((candidate) => `S${candidate.string}F${candidate.fret}`).join(", ")
+          : "n/a";
+        const noteTitle = `${unresolved ? "Unresolved" : `S${tabNote.string} F${tabNote.fret}`} (${midiToName(tabNote.midi)}) · reason=${tabNote.reason ?? "mapped"} · candidates=${candidateLabel}`;
+
+        if (sustainWidth > 3) {
+          sustains.push(
+            <line
+              key={`sus-${event.timeMs}-${eventIndex}-${noteIndex}`}
+              x1={x + chipW * 0.45}
+              x2={x + sustainWidth}
+              y1={y}
+              y2={y}
+              stroke={unresolved ? "#991b1b" : "#2563eb"}
+              strokeOpacity={unresolved ? 0.7 : 0.78}
+              strokeWidth={3}
+              strokeLinecap="round"
+            />,
+          );
+        }
+
+        chips.push(
+          <g key={`chip-${event.timeMs}-${eventIndex}-${noteIndex}`}>
+            <title>{`${noteTitle} @ ${Math.round(event.timeMs)}ms`}</title>
+            <rect
+              x={chipX}
+              y={chipY}
+              width={chipW}
+              height={chipH}
+              rx={4}
+              ry={4}
+              fill={unresolved ? "#7f1d1d" : "#1d4ed8"}
+              stroke={unresolved ? "#ef4444" : "#93c5fd"}
+              strokeWidth={1}
+            />
+            <text
+              x={x}
+              y={chipY + chipH / 2 + 4}
+              textAnchor="middle"
+              fontSize={11}
+              fontWeight={700}
+              fill={unresolved ? "#fecaca" : "#dbeafe"}
+            >
+              {label}
+            </text>
+          </g>,
+        );
+      });
+    });
+
+    return { sustains, chips };
+  }, [
+    visibleEvents,
+    startMs,
+    windowMs,
+    leftPad,
+    plotWidth,
+    lineTop,
+    instrumentProfile.maxFret,
+    stringCount,
+    stringYs,
+  ]);
+
+  return (
+    <div
+      style={{
+        background: "#111827",
+        border: "1px solid #1f2937",
+        borderRadius: 8,
+        padding: "12px 12px 10px",
+        marginBottom: 24,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5, gap: 12 }}>
+        <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: 2 }}>
+          UPCOMING TAB ({instrumentProfile.label})
+        </div>
+        <div style={{ fontSize: 11, color: "#4b5563" }}>
+          {bpm
+            ? `Measure ${((measureStartIndex ?? 0) + 1)} -> ${((measureStartIndex ?? 0) + windowMeasures)} · ${Math.round(bpm)} BPM`
+            : "BPM unknown Â· showing 4s window"}
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 11, color: "#64748b" }}>
+          Tuning {tuningLabel} · Policy {policyLabel}
+        </div>
+        <div
+          style={{
+            fontSize: 10,
+            letterSpacing: 1.4,
+            borderRadius: 999,
+            padding: "2px 8px",
+            border: `1px solid ${unresolvedVisibleCount === 0 ? "#166534" : "#991b1b"}`,
+            color: unresolvedVisibleCount === 0 ? "#22c55e" : "#fca5a5",
+            background: unresolvedVisibleCount === 0 ? "#14532d" : "#7f1d1d",
+          }}
+        >
+          {unresolvedVisibleCount === 0 ? "OK" : `${unresolvedVisibleCount} unresolved`}
+        </div>
+      </div>
+
+      <div
+        style={{
+          position: "relative",
+          borderRadius: 8,
+          border: "1px solid #374151",
+          background: "linear-gradient(180deg, #0b1020 0%, #080b14 100%)",
+          overflow: "hidden",
+        }}
+      >
+        <svg
+          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+          width="100%"
+          height={svgHeight}
+          role="img"
+          aria-label="Tablature preview"
+        >
+          <rect x={0} y={0} width={svgWidth} height={svgHeight} fill="transparent" />
+
+          {ticks.map((tick, idx) => {
+            const x = leftPad + (tick.pct / 100) * plotWidth;
+            return (
+              <line
+                key={`tick-${idx}`}
+                x1={x}
+                x2={x}
+                y1={plotTop}
+                y2={plotBottom}
+                stroke={tick.strong ? "#334155" : "#1f2937"}
+                strokeWidth={tick.strong ? 2 : 1}
+                opacity={tick.strong ? 0.9 : 0.8}
+              />
+            );
+          })}
+
+          {stringYs.map((y, idx) => {
+            const stringNumber = idx + 1;
+            const tuningMidi = instrumentProfile.tuning[stringCount - stringNumber];
+            const laneLabel = instrumentProfile.displayStrings[idx] ?? `S${stringNumber}`;
+            return (
+              <g key={`string-${stringNumber}`}>
+                <text x={10} y={y + 4} fontSize={11} fill="#94a3b8">
+                  {laneLabel}
+                </text>
+                <line x1={leftPad} x2={leftPad + plotWidth} y1={y} y2={y} stroke="#64748b" strokeWidth={1.2} />
+                <text x={leftPad + plotWidth + 6} y={y + 4} fontSize={10} fill="#475569">
+                  {midiToName(tuningMidi)}
+                </text>
+              </g>
+            );
+          })}
+
+          {noteLayers.sustains}
+          {noteLayers.chips}
+
+          <line
+            x1={nowX}
+            x2={nowX}
+            y1={plotTop}
+            y2={plotBottom}
+            stroke="#facc15"
+            strokeWidth={2}
+            opacity={0.95}
+          />
+          <rect x={nowX - 18} y={2} width={36} height={14} rx={5} ry={5} fill="#facc15" />
+          <text x={nowX} y={12} textAnchor="middle" fontSize={9} fontWeight={800} fill="#111827">
+            NOW
+          </text>
+        </svg>
+      </div>
+
+      <div style={{ fontSize: 11, color: "#4b5563", marginTop: 8 }}>
+        Tab preview is generated from chart MIDI + tuning ({tuningLabel}) using {policyLabel} mapping.
       </div>
     </div>
   );
@@ -740,7 +1004,7 @@ export function StaffPreview({
           return n;
         });
 
-        return { notes }; // ✅ MUST be inside the function
+        return { notes }; // âœ… MUST be inside the function
       };
 
       // Draw each measure as its own stave (barlines + ledger lines happen automatically)
@@ -811,12 +1075,12 @@ export function StaffPreview({
       </div>
 
       <div style={{ fontSize: 11, color: "#4b5563", marginTop: 8 }}>
-        Readability requires quantization. If this looks "off-beat", your <code>bpmHint</code> (or chart timings) don't match the audio.
+        Readability requires quantization. If this looks &quot;off-beat&quot;, your <code>bpmHint</code> (or chart timings) don&apos;t match the audio.
       </div>
     </div>
   );
 }
-// ─── Component ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function GamePage({ params }: { params: Promise<{ levelId: string }> }) {
   const { levelId } = use(params);
@@ -842,8 +1106,11 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   const [gameOver,     setGameOver    ] = useState(false);
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
   const [playbackSource, setPlaybackSource] = useState<PlaybackSource>("full_mix");
+  const [previewMode, setPreviewMode] = useState<PreviewMode>("tab");
+  const [instrumentOverride, setInstrumentOverride] = useState<InstrumentOverride>("auto");
+  const [tabMappingPolicy, setTabMappingPolicy] = useState<MappingPolicy>("beginner_open");
   const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
-  // ── NEW: volume state ──
+  // â”€â”€ NEW: volume state â”€â”€
   const [volume,       setVolume      ] = useState(1);
   const [isMuted,      setIsMuted     ] = useState(false);
   const prevVolumeRef = useRef(1); // remember volume before mute
@@ -876,14 +1143,14 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   useEffect(() => { inputLatencyMsRef.current = inputLatencyMs; }, [inputLatencyMs]);
   useEffect(() => { playbackSourceRef.current = playbackSource; }, [playbackSource]);
 
-  // ── Sync volume to audio element ──
+  // â”€â”€ Sync volume to audio element â”€â”€
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
     a.volume = isMuted ? 0 : volume;
   }, [volume, isMuted]);
 
-  // ── Load chart ──
+  // â”€â”€ Load chart â”€â”€
   useEffect(() => {
     (async () => {
       let res = await fetch(`/api/charts/${levelId}`, { cache: "no-store" });
@@ -939,7 +1206,54 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     return playbackUrls.fullMixAudioUrl || playbackUrls.analysisAudioUrl;
   }, [playbackSource, playbackUrls]);
 
-  // ── Enumerate audio inputs ──
+  const instrumentProfile = useMemo(() => {
+    if (!chart) return null;
+    return resolveInstrumentProfile(chart, instrumentOverride);
+  }, [chart, instrumentOverride]);
+
+  const hasAuthoredTabData = useMemo(
+    () => !!chart?.events.some((event) => Array.isArray(event.tab) && event.tab.length > 0),
+    [chart],
+  );
+
+  const effectiveTabMappingPolicy = useMemo<MappingPolicy>(
+    () =>
+      !hasAuthoredTabData && tabMappingPolicy === "exact_authored"
+        ? "beginner_open"
+        : tabMappingPolicy,
+    [hasAuthoredTabData, tabMappingPolicy],
+  );
+
+  const computedTabEvents = useMemo<ComputedTabEvent[] | null>(() => {
+    if (!chart || !instrumentProfile) return null;
+    return computeTabAssignments(chart, instrumentProfile, effectiveTabMappingPolicy);
+  }, [chart, instrumentProfile, effectiveTabMappingPolicy]);
+
+  const tabStatusWindow = useMemo(
+    () =>
+      computePreviewWindow({
+        bpmHint: chart?.bpmHint,
+        songTimeMs,
+        beatsPerMeasure: 4,
+        windowMeasures: 2,
+      }),
+    [chart?.bpmHint, songTimeMs],
+  );
+
+  const visibleComputedTabEvents = useMemo(
+    () =>
+      computedTabEvents
+        ? getVisibleEventsInWindow(computedTabEvents, tabStatusWindow.startMs, tabStatusWindow.endMs, 96)
+        : [],
+    [computedTabEvents, tabStatusWindow.startMs, tabStatusWindow.endMs],
+  );
+
+  const unresolvedVisibleCount = useMemo(
+    () => visibleComputedTabEvents.reduce((sum, event) => sum + event.unresolvedCount, 0),
+    [visibleComputedTabEvents],
+  );
+
+  // â”€â”€ Enumerate audio inputs â”€â”€
   const refreshAudioInputs = useCallback(async () => {
     const all = await navigator.mediaDevices.enumerateDevices();
     const inputs = all.filter((d) => d.kind === "audioinput");
@@ -954,7 +1268,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     return () => { navigator.mediaDevices?.removeEventListener?.("devicechange", handler); };
   }, [refreshAudioInputs]);
 
-  // ── Clean up mic ──
+  // â”€â”€ Clean up mic â”€â”€
   const stopPlayback = useCallback(
     (options?: { resetTime?: boolean; clearSource?: boolean; updateState?: boolean }) => {
       const audio = audioRef.current;
@@ -1049,7 +1363,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     };
   }, [stopMic, stopPlayback]);
 
-  // ── Init mic ──
+  // â”€â”€ Init mic â”€â”€
   const initMic = useCallback(async () => {
     try {
       if (audioInputs.length === 0) await refreshAudioInputs();
@@ -1094,19 +1408,19 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
       console.error("Mic init failed", e);
       alert(
         "Could not access the selected audio input.\n\n" +
-        "Tips:\n• Open http://localhost:3000\n• Allow mic permission\n• Pick your USB interface"
+        "Tips:\nâ€¢ Open http://localhost:3000\nâ€¢ Allow mic permission\nâ€¢ Pick your USB interface"
       );
     }
   }, [audioInputs.length, refreshAudioInputs, selectedDeviceId, stopMic]);
 
-  // ── Feedback flash ──
+  // â”€â”€ Feedback flash â”€â”€
   const showFeedback = useCallback((type: "HIT" | "MISS") => {
     setFeedback(type);
     if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
     feedbackTimerRef.current = setTimeout(() => setFeedback(null), 400);
   }, []);
 
-  // ── Main game loop ──
+  // â”€â”€ Main game loop â”€â”€
   useEffect(() => {
     if (!chart) return;
 
@@ -1202,7 +1516,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [chart, showFeedback]);
 
-  // ── Song ended handler ──
+  // â”€â”€ Song ended handler â”€â”€
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -1230,7 +1544,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     return () => audio.removeEventListener("ended", handleEnded);
   }, [chart]);
 
-  // ── Submit score when game ends ──
+  // â”€â”€ Submit score when game ends â”€â”€
   useEffect(() => {
     if (gameOver && !scoreSubmitted && session?.user?.id && chart) {
       const hits = scoredNotes.filter((n) => n.result === "HIT").length;
@@ -1266,7 +1580,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     }
   }, [gameOver, scoreSubmitted, session, chart, score, scoredNotes, levelId]);
 
-  // ── Play / Pause ──
+  // â”€â”€ Play / Pause â”€â”€
   const toggle = async () => {
     if (!chart || !activePlaybackUrl) return;
     let a = audioRef.current;
@@ -1304,7 +1618,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     else { a.pause(); setIsPlaying(false); }
   };
 
-  // ── Seek (progress bar click) ──
+  // â”€â”€ Seek (progress bar click) â”€â”€
   const switchPlaybackSource = (nextSource: PlaybackSource) => {
     const currentSource = playbackSourceRef.current;
     if (!chart || nextSource === currentSource) {
@@ -1379,7 +1693,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     if (nextIdxRef.current < 0) nextIdxRef.current = chart.events.length;
   };
 
-  // ── Toggle mute ──
+  // â”€â”€ Toggle mute â”€â”€
   const toggleMute = () => {
     if (isMuted) {
       setIsMuted(false);
@@ -1390,15 +1704,15 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     }
   };
 
-  // ── Volume icon helper ──
+  // â”€â”€ Volume icon helper â”€â”€
   const volumeIcon = () => {
-    if (isMuted || volume === 0) return "🔇";
-    if (volume < 0.4) return "🔈";
-    if (volume < 0.75) return "🔉";
-    return "🔊";
+    if (isMuted || volume === 0) return "ðŸ”‡";
+    if (volume < 0.4) return "ðŸ”ˆ";
+    if (volume < 0.75) return "ðŸ”‰";
+    return "ðŸ”Š";
   };
 
-  // ── Restart ──
+  // â”€â”€ Restart â”€â”€
   const restart = () => {
     const a = audioRef.current;
     if (a) { a.currentTime = 0; a.play().catch(console.error); }
@@ -1415,7 +1729,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     setIsPlaying(true);
   };
 
-  // ── Derived stats ──
+  // â”€â”€ Derived stats â”€â”€
   const hits     = useMemo(() => scoredNotes.filter((n) => n.result === "HIT").length,  [scoredNotes]);
   const misses   = useMemo(() => scoredNotes.filter((n) => n.result === "MISS").length, [scoredNotes]);
   const accuracy = scoredNotes.length > 0 ? Math.round((hits / scoredNotes.length) * 100) : 100;
@@ -1429,7 +1743,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
 
   if (!chart) return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:"100vh", background:"#0a0a0f", color:"#fff", fontFamily:"monospace" }}>
-      Loading chart…
+      Loading chartâ€¦
     </div>
   );
 
@@ -1468,7 +1782,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
         {chart.bpmHint && <span style={{ fontSize:13, color:"#666", letterSpacing:1 }}>{Math.round(chart.bpmHint)} BPM</span>}
       </div>
 
-      {/* ── Song progress bar ── */}
+      {/* â”€â”€ Song progress bar â”€â”€ */}
       <div style={{ marginBottom: 20 }}>
         <div
           onClick={handleSeek}
@@ -1516,9 +1830,9 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
       <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:12, marginBottom:24 }}>
         {[
           { label:"SCORE",     value:score.toLocaleString(), color:"#facc15" },
-          { label:"COMBO",     value:`×${combo}`,            color:combo > 4 ? "#22c55e" : "#f0f0f0" },
+          { label:"COMBO",     value:`Ã—${combo}`,            color:combo > 4 ? "#22c55e" : "#f0f0f0" },
           { label:"ACCURACY",  value:`${accuracy}%`,         color:accuracy >= 80 ? "#22c55e" : accuracy >= 50 ? "#facc15" : "#ef4444" },
-          { label:"MAX COMBO", value:`×${maxCombo}`,         color:"#60a5fa" },
+          { label:"MAX COMBO", value:`Ã—${maxCombo}`,         color:"#60a5fa" },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ background:"#111827", border:"1px solid #1f2937", borderRadius:8, padding:"12px 16px" }}>
             <div style={{ fontSize:10, color:"#6b7280", letterSpacing:2, marginBottom:4 }}>{label}</div>
@@ -1530,10 +1844,10 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
       {/* Hit / Miss */}
       <div style={{ display:"flex", gap:12, marginBottom:24 }}>
         <div style={{ background:"#14532d", border:"1px solid #166534", borderRadius:8, padding:"8px 20px", fontSize:14, color:"#22c55e" }}>
-          ✓ {hits} HIT{hits !== 1 ? "S" : ""}
+          âœ“ {hits} HIT{hits !== 1 ? "S" : ""}
         </div>
         <div style={{ background:"#7f1d1d", border:"1px solid #991b1b", borderRadius:8, padding:"8px 20px", fontSize:14, color:"#ef4444" }}>
-          ✗ {misses} MISS{misses !== 1 ? "ES" : ""}
+          âœ— {misses} MISS{misses !== 1 ? "ES" : ""}
         </div>
       </div>
 
@@ -1550,6 +1864,84 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
           <span style={{ color:"#9ca3af" }}>{micReady ? "Input active" : "Input off"}</span>
         </div>
       </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: 2 }}>PREVIEW MODE</div>
+        {(["tab", "staff", "grid", "off"] as PreviewMode[]).map((mode) => (
+          <button
+            key={mode}
+            onClick={() => setPreviewMode(mode)}
+            style={{
+              ...btnStyle(previewMode === mode ? "#1d4ed8" : "#374151"),
+              padding: "6px 10px",
+              fontSize: 11,
+            }}
+          >
+            {mode.toUpperCase()}
+          </button>
+        ))}
+        {instrumentProfile && (
+          <div style={{ fontSize: 11, color: "#4b5563" }}>
+            {instrumentProfile.label} · {instrumentProfile.tuning.length} strings · max fret {instrumentProfile.maxFret} · source {instrumentProfile.source}
+          </div>
+        )}
+      </div>
+      {previewMode === "tab" && instrumentProfile && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: 2 }}>INSTRUMENT</div>
+          {(["auto", "bass", "guitar"] as InstrumentOverride[]).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setInstrumentOverride(mode)}
+              style={{
+                ...btnStyle(instrumentOverride === mode ? "#0e7490" : "#374151"),
+                padding: "6px 10px",
+                fontSize: 11,
+              }}
+            >
+              {mode.toUpperCase()}
+            </button>
+          ))}
+
+          <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: 2, marginLeft: 8 }}>MAPPING</div>
+          {(["beginner_open", "smooth_motion", "exact_authored"] as MappingPolicy[]).map((policy) => {
+            const isExact = policy === "exact_authored";
+            const disabled = isExact && !hasAuthoredTabData;
+            return (
+              <button
+                key={policy}
+                onClick={() => setTabMappingPolicy(policy)}
+                disabled={disabled}
+                style={{
+                  ...btnStyle(effectiveTabMappingPolicy === policy ? "#1d4ed8" : "#374151"),
+                  padding: "6px 10px",
+                  fontSize: 11,
+                  opacity: disabled ? 0.5 : 1,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                }}
+                title={disabled ? "No authored tab data available in this chart." : undefined}
+              >
+                {mappingPolicyLabel(policy).toUpperCase()}
+              </button>
+            );
+          })}
+
+          <div
+            style={{
+              marginLeft: 8,
+              fontSize: 10,
+              letterSpacing: 1.4,
+              borderRadius: 999,
+              padding: "2px 8px",
+              border: `1px solid ${unresolvedVisibleCount === 0 ? "#166534" : "#991b1b"}`,
+              color: unresolvedVisibleCount === 0 ? "#22c55e" : "#fca5a5",
+              background: unresolvedVisibleCount === 0 ? "#14532d" : "#7f1d1d",
+            }}
+          >
+            {unresolvedVisibleCount === 0 ? "OK" : `${unresolvedVisibleCount} UNRESOLVED`}
+          </div>
+        </div>
+      )}
 
       {(playbackNotice || (chart.analysisToPlaybackOffsetMs ?? 0) !== 0) && (
         <div className={styles.playbackNotice}>
@@ -1674,7 +2066,7 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
         <div>
           <div style={{ fontSize:10, color:"#6b7280", letterSpacing:2, marginBottom:6 }}>YOU&apos;RE PLAYING</div>
           <div style={{ fontSize:22, fontWeight:700, color:detectedHz ? "#60a5fa" : "#374151" }}>
-            {detectedHz ? `${detectedHz.toFixed(1)} Hz` : "—"}
+            {detectedHz ? `${detectedHz.toFixed(1)} Hz` : "â€”"}
           </div>
           {detectedHz && (
             <div style={{ fontSize:11, color:"#4b5563", marginTop:2 }}>
@@ -1685,17 +2077,32 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
         <div>
           <div style={{ fontSize:10, color:"#6b7280", letterSpacing:2, marginBottom:6 }}>NEXT NOTE</div>
           <div style={{ fontSize:22, fontWeight:700, color:"#f0f0f0" }}>
-            {nextEvent ? `${midiToName(nextEvent.notes[0])} (${midiToHz(nextEvent.notes[0]).toFixed(1)} Hz)` : "—"}
+            {nextEvent ? `${midiToName(nextEvent.notes[0])} (${midiToHz(nextEvent.notes[0]).toFixed(1)} Hz)` : "â€”"}
           </div>
           {nextEvent && (
             <div style={{ fontSize:12, color:"#6b7280", marginTop:2 }}>
               in {Math.max(0, Math.round(nextEvent.timeMs - songTimeMs))} ms
-              {nextEvent.durationMs > 0 && ` · hold ${nextEvent.durationMs} ms`}
+              {nextEvent.durationMs > 0 && ` Â· hold ${nextEvent.durationMs} ms`}
             </div>
           )}
         </div>
       </div>
-      <StaffPreview chart={chart} songTimeMs={songTimeMs} />
+      {previewMode === "tab" && computedTabEvents && instrumentProfile && (
+        <TabPreview
+          events={computedTabEvents}
+          bpmHint={chart.bpmHint}
+          songTimeMs={songTimeMs}
+          instrumentProfile={instrumentProfile}
+          mappingPolicy={effectiveTabMappingPolicy}
+          unresolvedVisibleCount={unresolvedVisibleCount}
+        />
+      )}
+      {previewMode === "staff" && (
+        <StaffPreview chart={chart} songTimeMs={songTimeMs} />
+      )}
+      {previewMode === "grid" && (
+        <MeasurePreview chart={chart} songTimeMs={songTimeMs} />
+      )}
       {/* Recent notes */}
       
       {scoredNotes.length > 0 && (
@@ -1721,5 +2128,6 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     </div>
   );
 }
+
 
 
