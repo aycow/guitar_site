@@ -4,9 +4,11 @@ import { Suspense, useEffect, useMemo, useRef, type MutableRefObject } from "rea
 import { Canvas, useFrame, useLoader } from "@react-three/fiber";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { MeshSurfaceSampler } from "three/addons/math/MeshSurfaceSampler.js";
 
-const MODEL_URL = "/models/telecaster/telecaster.gltf";
+const MODEL_URL = "/models/telecaster/telecaster_40th_draco.glb";
+const DRACO_DECODER_PATH = "/draco/gltf/";
 const PARTICLE_COUNT = 98000;
 const BODY_PARTICLE_SHARE = 0.84;
 const NORMALIZED_MODEL_SIZE = 2.2;
@@ -19,6 +21,9 @@ const MORPH_IN_DURATION = 5.8;
 const HOLD_DURATION = 2.8;
 const MORPH_OUT_DURATION = 4.1;
 const CYCLE_DURATION = MORPH_IN_DURATION + HOLD_DURATION + MORPH_OUT_DURATION;
+
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath(DRACO_DECODER_PATH);
 
 interface SceneProps {
   mode?: 0 | 1;
@@ -365,7 +370,9 @@ function buildParticleGeometry(scene: THREE.Object3D): THREE.BufferGeometry {
 }
 
 function TelecasterParticleField({ modelUrl, mode, intensity, mouse, dragRotation }: ParticleFieldProps) {
-  const gltf = useLoader(GLTFLoader, modelUrl);
+  const gltf = useLoader(GLTFLoader, modelUrl, (loader) => {
+    loader.setDRACOLoader(dracoLoader);
+  });
   const pointsRef = useRef<THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null>(null);
   const materialRef = useRef<THREE.ShaderMaterial | null>(null);
   const smoothedRotation = useRef(new THREE.Vector2(0, 0));
