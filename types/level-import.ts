@@ -47,6 +47,7 @@ export interface ChartEvent {
   timeMs: number;
   durationMs: number;
   notes: number[];
+  tab?: { string: number; fret: number }[];
   velocity?: number;
   confidence?: number;
 }
