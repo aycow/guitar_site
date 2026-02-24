@@ -20,10 +20,18 @@ type Chart = {
   id: string;
   title: string;
   audioUrl: string;
+  fullMixAudioUrl?: string;
+  analysisAudioUrl?: string;
+  stemAudioUrl?: string;
+  analysisStem?: string;
+  analysisToPlaybackOffsetMs?: number;
+  analysisFirstActivityMs?: number;
   offsetMs: number;
   bpmHint?: number | null;
   events: ChartEvent[];
 };
+
+type PlaybackSource = "full_mix" | "analysis";
 
 type NoteResult = "HIT" | "MISS";
 
@@ -134,6 +142,31 @@ function formatTime(ms: number): string {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function resolvePlaybackUrls(chart: Chart) {
+  const fullMixAudioUrl = chart.fullMixAudioUrl ?? chart.audioUrl;
+  const analysisAudioUrl = chart.analysisAudioUrl ?? chart.stemAudioUrl ?? chart.audioUrl;
+  return {
+    fullMixAudioUrl: fullMixAudioUrl || "",
+    analysisAudioUrl: analysisAudioUrl || "",
+  };
+}
+
+function toAnalysisTimelineMs(playbackMs: number, source: PlaybackSource, chart: Chart) {
+  const alignment = chart.analysisToPlaybackOffsetMs ?? 0;
+  if (source === "full_mix") {
+    return playbackMs + alignment;
+  }
+  return playbackMs;
+}
+
+function fromAnalysisTimelineMs(analysisMs: number, source: PlaybackSource, chart: Chart) {
+  const alignment = chart.analysisToPlaybackOffsetMs ?? 0;
+  if (source === "full_mix") {
+    return analysisMs - alignment;
+  }
+  return analysisMs;
 }
 
 // ─── Results Screen ───────────────────────────────────────────────────────────
@@ -546,7 +579,6 @@ function MeasurePreview({
 }
 
 
-
 function midiToVexKey(m: number) {
   const names = ["c","c#","d","d#","e","f","f#","g","g#","a","a#","b"];
   const name = names[m % 12];
@@ -809,6 +841,8 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   const [pitchHistoryCount, setPitchHistoryCount] = useState(0);
   const [gameOver,     setGameOver    ] = useState(false);
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
+  const [playbackSource, setPlaybackSource] = useState<PlaybackSource>("full_mix");
+  const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
   // ── NEW: volume state ──
   const [volume,       setVolume      ] = useState(1);
   const [isMuted,      setIsMuted     ] = useState(false);
@@ -820,6 +854,8 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
 
   const micCtxRef    = useRef<AudioContext | null>(null);
   const analyserRef  = useRef<AnalyserNode | null>(null);
+  const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const micFilterRef = useRef<BiquadFilterNode | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const micBufRef    = useRef<Float32Array<ArrayBuffer>>(
     new Float32Array(4096) as Float32Array<ArrayBuffer>
@@ -834,9 +870,11 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   const maxComboRef = useRef(0);
   const scoredRef   = useRef<ScoredNote[]>([]);
   const nextIdxRef  = useRef(0);
+  const playbackSourceRef = useRef<PlaybackSource>("full_mix");
 
   const inputLatencyMsRef = useRef(inputLatencyMs);
   useEffect(() => { inputLatencyMsRef.current = inputLatencyMs; }, [inputLatencyMs]);
+  useEffect(() => { playbackSourceRef.current = playbackSource; }, [playbackSource]);
 
   // ── Sync volume to audio element ──
   useEffect(() => {
@@ -848,16 +886,58 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   // ── Load chart ──
   useEffect(() => {
     (async () => {
-      const res = await fetch(`/charts/${levelId}.json`, { cache: "no-store" });
+      let res = await fetch(`/api/charts/${levelId}`, { cache: "no-store" });
+      if (!res.ok) {
+        res = await fetch(`/charts/${levelId}.json`, { cache: "no-store" });
+      }
       if (!res.ok) throw new Error(`Failed to load chart: ${res.status}`);
       const data: Chart = await res.json();
-      if (data.audioUrl.includes("REPLACE_ME") || !data.audioUrl.endsWith(".mp3")) {
+      if (!data.audioUrl || data.audioUrl.includes("REPLACE_ME")) {
         data.audioUrl = `/audio/${levelId}.mp3`;
       }
+      if (!data.fullMixAudioUrl) {
+        data.fullMixAudioUrl = data.audioUrl;
+      }
+      if (!data.analysisAudioUrl) {
+        data.analysisAudioUrl = data.stemAudioUrl ?? data.audioUrl;
+      }
+
+      const playbackUrls = resolvePlaybackUrls(data);
+      let defaultPlaybackSource: PlaybackSource = "full_mix";
+      const notices: string[] = [];
+      if (!playbackUrls.fullMixAudioUrl && playbackUrls.analysisAudioUrl) {
+        defaultPlaybackSource = "analysis";
+        notices.push("Full mix playback was unavailable, so analysis audio is active.");
+      }
+      if (
+        data.analysisStem &&
+        data.analysisAudioUrl &&
+        playbackUrls.fullMixAudioUrl &&
+        data.analysisAudioUrl === playbackUrls.fullMixAudioUrl
+      ) {
+        notices.push(`"${data.analysisStem}" stem was unavailable, so analysis fell back to full mix audio.`);
+      }
+      setPlaybackSource(defaultPlaybackSource);
+      playbackSourceRef.current = defaultPlaybackSource;
+      setPlaybackNotice(notices.length > 0 ? notices.join(" ") : null);
       data.events.forEach((e) => { e._scored = false; });
       setChart(data);
     })().catch(console.error);
   }, [levelId]);
+
+  const playbackUrls = useMemo(() => {
+    if (!chart) {
+      return { fullMixAudioUrl: "", analysisAudioUrl: "" };
+    }
+    return resolvePlaybackUrls(chart);
+  }, [chart]);
+
+  const activePlaybackUrl = useMemo(() => {
+    if (playbackSource === "analysis") {
+      return playbackUrls.analysisAudioUrl || playbackUrls.fullMixAudioUrl;
+    }
+    return playbackUrls.fullMixAudioUrl || playbackUrls.analysisAudioUrl;
+  }, [playbackSource, playbackUrls]);
 
   // ── Enumerate audio inputs ──
   const refreshAudioInputs = useCallback(async () => {
@@ -875,9 +955,57 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   }, [refreshAudioInputs]);
 
   // ── Clean up mic ──
+  const stopPlayback = useCallback(
+    (options?: { resetTime?: boolean; clearSource?: boolean; updateState?: boolean }) => {
+      const audio = audioRef.current;
+      const resetTime = options?.resetTime ?? true;
+      const clearSource = options?.clearSource ?? false;
+      const updateState = options?.updateState ?? true;
+
+      if (audio) {
+        audio.pause();
+        if (resetTime) {
+          audio.currentTime = 0;
+        }
+        if (clearSource) {
+          audio.removeAttribute("src");
+          audio.load();
+        }
+      }
+
+      if (updateState) {
+        setIsPlaying(false);
+        if (resetTime) {
+          setSongTimeMs(0);
+        }
+        if (clearSource) {
+          setSongDurationMs(0);
+        }
+      }
+    },
+    [],
+  );
+
   const stopMic = useCallback(() => {
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
     micStreamRef.current = null;
+    try {
+      micSourceRef.current?.disconnect();
+    } catch {
+      // no-op
+    }
+    try {
+      micFilterRef.current?.disconnect();
+    } catch {
+      // no-op
+    }
+    try {
+      analyserRef.current?.disconnect();
+    } catch {
+      // no-op
+    }
+    micSourceRef.current = null;
+    micFilterRef.current = null;
     analyserRef.current  = null;
     const ctx = micCtxRef.current;
     micCtxRef.current = null;
@@ -887,11 +1015,39 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
 
   useEffect(() => {
     return () => {
+      stopPlayback({ resetTime: true, clearSource: true, updateState: false });
       stopMic();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
     };
-  }, [stopMic]);
+  }, [stopMic, stopPlayback]);
+
+  useEffect(() => {
+    const handlePageHide = () => {
+      stopPlayback({ resetTime: true, updateState: true });
+      stopMic();
+    };
+    const handlePopState = () => {
+      stopPlayback({ resetTime: true, updateState: true });
+      stopMic();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPlayback({ resetTime: false, updateState: true });
+        stopMic();
+      }
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("popstate", handlePopState);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("popstate", handlePopState);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [stopMic, stopPlayback]);
 
   // ── Init mic ──
   const initMic = useCallback(async () => {
@@ -926,6 +1082,8 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
 
       micStreamRef.current = stream;
       micCtxRef.current    = ctx;
+      micSourceRef.current = source;
+      micFilterRef.current = hp;
       analyserRef.current  = analyser;
       pitchHistoryRef.current = [];
       micBufRef.current = new Float32Array(analyser.fftSize) as Float32Array<ArrayBuffer>;
@@ -958,9 +1116,9 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
       const micCtx   = micCtxRef.current;
 
       if (audio) {
-        const tRawMs  = audio.currentTime * 1000
-                        - (chart.offsetMs ?? 0)
-                        - inputLatencyMsRef.current;
+        const playbackMs = audio.currentTime * 1000;
+        const analysisTimelineMs = toAnalysisTimelineMs(playbackMs, playbackSourceRef.current, chart);
+        const tRawMs  = analysisTimelineMs - (chart.offsetMs ?? 0) - inputLatencyMsRef.current;
         const tGameMs = Math.max(0, tRawMs);
 
         if (now - lastUiUpdateRef.current >= UI_POLL_MS) {
@@ -1110,10 +1268,10 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
 
   // ── Play / Pause ──
   const toggle = async () => {
-    if (!chart) return;
+    if (!chart || !activePlaybackUrl) return;
     let a = audioRef.current;
     if (!a) {
-      a = new Audio(chart.audioUrl);
+      a = new Audio(activePlaybackUrl);
       a.preload = "auto";
       a.volume = isMuted ? 0 : volume;
       audioRef.current = a;
@@ -1147,18 +1305,78 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
   };
 
   // ── Seek (progress bar click) ──
+  const switchPlaybackSource = (nextSource: PlaybackSource) => {
+    const currentSource = playbackSourceRef.current;
+    if (!chart || nextSource === currentSource) {
+      return;
+    }
+
+    const nextSourceUrl = nextSource === "analysis"
+      ? playbackUrls.analysisAudioUrl
+      : playbackUrls.fullMixAudioUrl;
+    if (!nextSourceUrl) {
+      return;
+    }
+
+    const audio = audioRef.current;
+    if (!audio) {
+      setPlaybackSource(nextSource);
+      playbackSourceRef.current = nextSource;
+      return;
+    }
+
+    const wasPlaying = !audio.paused;
+    const currentPlaybackMs = audio.currentTime * 1000;
+    const analysisTimelineMs = toAnalysisTimelineMs(currentPlaybackMs, currentSource, chart);
+    const nextPlaybackMs = Math.max(0, fromAnalysisTimelineMs(analysisTimelineMs, nextSource, chart));
+    setPlaybackSource(nextSource);
+    playbackSourceRef.current = nextSource;
+
+    const applySwitchPosition = () => {
+      const targetSec = nextPlaybackMs / 1000;
+      audio.currentTime = Number.isFinite(audio.duration)
+        ? Math.min(targetSec, Math.max(0, audio.duration))
+        : targetSec;
+
+      const currentChartMs = Math.max(
+        0,
+        toAnalysisTimelineMs(audio.currentTime * 1000, nextSource, chart) - (chart.offsetMs ?? 0) - inputLatencyMsRef.current,
+      );
+      setSongTimeMs(currentChartMs);
+      if (Number.isFinite(audio.duration)) {
+        setSongDurationMs(audio.duration * 1000);
+      }
+      if (wasPlaying) {
+        void audio.play().catch(console.error);
+        setIsPlaying(true);
+      }
+    };
+
+    audio.pause();
+    audio.src = nextSourceUrl;
+    audio.load();
+    if (audio.readyState >= 1) {
+      applySwitchPosition();
+    } else {
+      audio.addEventListener("loadedmetadata", applySwitchPosition, { once: true });
+    }
+  };
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     const a = audioRef.current;
-    if (!a || !songDurationMs) return;
+    if (!a || !songDurationMs || !chart) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const newTimeS = (pct * songDurationMs) / 1000;
+    const newPlaybackMs = pct * songDurationMs;
+    const newTimeS = newPlaybackMs / 1000;
     a.currentTime = newTimeS;
-    setSongTimeMs(pct * songDurationMs);
+    const newChartMs = Math.max(
+      0,
+      toAnalysisTimelineMs(newPlaybackMs, playbackSourceRef.current, chart) - (chart.offsetMs ?? 0) - inputLatencyMsRef.current,
+    );
+    setSongTimeMs(newChartMs);
     // Reset scoring window so notes near the seek point are re-evaluated
-    const newTimeMs = pct * songDurationMs;
-    nextIdxRef.current = chart?.events.findIndex((ev) => !ev._scored && ev.timeMs >= newTimeMs - HIT_WINDOW_MS) ?? 0;
-    if (nextIdxRef.current < 0) nextIdxRef.current = chart?.events.length ?? 0;
+    nextIdxRef.current = chart.events.findIndex((ev) => !ev._scored && ev.timeMs >= newChartMs - HIT_WINDOW_MS);
+    if (nextIdxRef.current < 0) nextIdxRef.current = chart.events.length;
   };
 
   // ── Toggle mute ──
@@ -1333,6 +1551,15 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
         </div>
       </div>
 
+      {(playbackNotice || (chart.analysisToPlaybackOffsetMs ?? 0) !== 0) && (
+        <div className={styles.playbackNotice}>
+          {playbackNotice && <div>{playbackNotice}</div>}
+          {(chart.analysisToPlaybackOffsetMs ?? 0) !== 0 && (
+            <div>Analysis/playback alignment offset: {chart.analysisToPlaybackOffsetMs}ms.</div>
+          )}
+        </div>
+      )}
+
       {showSettings && (
         <div className={styles.settingsPanel}>
           <div className={styles.settingsSection}>
@@ -1354,6 +1581,34 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
               {micReady && <button onClick={stopMic} style={{ ...btnStyle("#ef4444"), padding:"6px 10px", fontSize:11 }}>Stop Input</button>}
               {micReady && <button onClick={() => void initMic()} style={{ ...btnStyle("#2563eb"), padding:"6px 10px", fontSize:11 }}>Apply Selection</button>}
             </div>
+          </div>
+
+          <div className={styles.settingsSection}>
+            <div className={styles.settingsLabel}>PLAYBACK SOURCE</div>
+            <div className={styles.inputRow}>
+              <button
+                onClick={() => switchPlaybackSource("full_mix")}
+                disabled={!playbackUrls.fullMixAudioUrl}
+                style={{ ...btnStyle(playbackSource === "full_mix" ? "#0e7490" : "#374151"), padding:"6px 10px", fontSize:11 }}
+              >
+                Full Mix
+              </button>
+              <button
+                onClick={() => switchPlaybackSource("analysis")}
+                disabled={!playbackUrls.analysisAudioUrl}
+                style={{ ...btnStyle(playbackSource === "analysis" ? "#0e7490" : "#374151"), padding:"6px 10px", fontSize:11 }}
+              >
+                Isolated Stem {chart.analysisStem ? `(${chart.analysisStem})` : ""}
+              </button>
+            </div>
+            <div className={styles.latencyHint}>
+              Current source: {playbackSource === "analysis" ? "analysis/stem audio" : "full mix audio"}
+            </div>
+            {chart.analysisFirstActivityMs !== undefined && (
+              <div className={styles.latencyHint}>
+                Analysis first activity: {chart.analysisFirstActivityMs}ms.
+              </div>
+            )}
           </div>
 
           <div className={styles.settingsSection}>
@@ -1466,4 +1721,5 @@ export default function GamePage({ params }: { params: Promise<{ levelId: string
     </div>
   );
 }
+
 

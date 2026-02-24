@@ -5,16 +5,35 @@ import clientPromise from "@/server/db/client";
 import { ObjectId } from "mongodb";
 import type { SubmitScoreRequest } from "@/types/api";
 
+function toSafeIso(value: unknown): string {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+
+  return new Date().toISOString();
+}
+
 export async function GET(req: Request) {
   console.log("[SCORES] GET leaderboard called");
 
   try {
     const { searchParams } = new URL(req.url);
     const levelId = searchParams.get("levelId");
-    const limit = Math.min(parseInt(searchParams.get("limit") || "100"), 1000);
+
+    const rawLimit = parseInt(searchParams.get("limit") || "100", 10);
+    const limit = Math.min(Number.isNaN(rawLimit) ? 100 : rawLimit, 1000);
 
     const client = await clientPromise;
     const db = client.db("guitar_academy");
+
+    // DEBUG: confirms DB connectivity/auth
+    await db.command({ ping: 1 });
+    console.log("[SCORES] ✅ DB ping ok");
 
     const query: Record<string, unknown> = {};
     if (levelId) query.levelId = levelId;
@@ -47,6 +66,7 @@ export async function GET(req: Request) {
         try {
           return new ObjectId(s._id as string);
         } catch {
+          console.warn("[SCORES] Invalid userId (not ObjectId):", s._id);
           return null;
         }
       })
@@ -75,6 +95,7 @@ export async function GET(req: Request) {
     const entries = scores.map((score, index) => {
       const userId = score._id as string;
       const userInfo = userMap.get(userId);
+
       if (!userInfo) {
         console.warn("[SCORES] ⚠️ No user found for userId:", userId);
       }
@@ -90,18 +111,24 @@ export async function GET(req: Request) {
         hits: score.hits as number,
         misses: score.misses as number,
         levelId: score.levelId as string,
-        createdAt:
-          (score.createdAt as Date)?.toISOString() ??
-          new Date().toISOString(),
+        createdAt: toSafeIso(score.createdAt),
       };
     });
 
     console.log("[SCORES] ✅ Returning", entries.length, "entries");
     return NextResponse.json({ entries, totalPlayers: entries.length });
   } catch (error) {
-    console.error("[SCORES] ❌ Error:", error);
+    console.error("[SCORES] ❌ Error full:", error);
+    if (error instanceof Error) {
+      console.error("[SCORES] ❌ Message:", error.message);
+      console.error("[SCORES] ❌ Stack:", error.stack);
+    }
+
     return NextResponse.json(
-      { message: "Failed to fetch leaderboard" },
+      {
+        message: "Failed to fetch leaderboard",
+        error: error instanceof Error ? error.message : String(error), // TEMP DEBUG
+      },
       { status: 500 }
     );
   }
@@ -123,6 +150,10 @@ export async function POST(req: Request) {
 
     const client = await clientPromise;
     const db = client.db("guitar_academy");
+
+    // DEBUG: confirms DB connectivity/auth
+    await db.command({ ping: 1 });
+    console.log("[SCORES] ✅ DB ping ok (POST)");
 
     // Save the score
     const result = await db.collection("scores").insertOne({
@@ -191,11 +222,20 @@ export async function POST(req: Request) {
       "| longest:",
       longestStreak
     );
+
     return NextResponse.json({ ok: true, message: "Score saved successfully" });
   } catch (error) {
-    console.error("[SCORES] ❌ Error:", error);
+    console.error("[SCORES] ❌ Error full:", error);
+    if (error instanceof Error) {
+      console.error("[SCORES] ❌ Message:", error.message);
+      console.error("[SCORES] ❌ Stack:", error.stack);
+    }
+
     return NextResponse.json(
-      { message: "Failed to save score" },
+      {
+        message: "Failed to save score",
+        error: error instanceof Error ? error.message : String(error), // TEMP DEBUG
+      },
       { status: 500 }
     );
   }
